@@ -36,6 +36,11 @@ The API listens at `http://127.0.0.1:8000` by default. Interactive API documenta
 
 LLM provider setup and chat API usage are documented in [`integrations/llm_providers/README.md`](integrations/llm_providers/README.md).
 
+## Contributors
+
+- Deejf — project owner
+- OpenAI Codex — AI-assisted development
+
 ## Test
 
 ```powershell
