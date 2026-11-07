@@ -14,6 +14,8 @@ A local development environment with a FastAPI/SQLite engine, a React web workbe
 
 [![Download OmniDev for Windows](https://img.shields.io/badge/Download-OmniDev%20for%20Windows-4F46E5?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/notgamermx/OmniDev/releases/latest/download/OmniDev-Windows-x64.msi)
 
+'''if it's not working scroll'''
+
 [![CI](https://github.com/notgamermx/OmniDev/actions/workflows/ci.yml/badge.svg)](https://github.com/notgamermx/OmniDev/actions/workflows/ci.yml)
 
 Download the MSI from [GitHub Releases](https://github.com/notgamermx/OmniDev/releases), install it, then search for **OmniDev** in Start. Releases also include the portable CLI ZIP, the `omnidev` Python wheel, Linux desktop package, and checksums. The download button becomes available after the first tagged release finishes CI.
