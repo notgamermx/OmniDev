@@ -30,6 +30,15 @@ def test_files_are_scoped_and_sessions_persist(client, tmp_path):
         client.get("/api/v1/files", params={"path": "src"}).json()["items"][0]["path"]
         == "src/example.py"
     )
+    # Explorer navigates using the returned paths, including nested directories.
+    assert client.post("/api/v1/directories", json={"path": "src/nested"}).status_code == 200
+    assert client.put("/api/v1/file", json={"path": "src/nested/file.txt", "content": "nested"}).status_code == 200
+    entries = client.get("/api/v1/files", params={"path": "src"}).json()["items"]
+    folder = next(item for item in entries if item["isDirectory"])
+    assert folder["path"] == "src/nested"
+    nested = client.get("/api/v1/files", params={"path": folder["path"]}).json()["items"][0]
+    assert nested["path"] == "src/nested/file.txt"
+    assert client.get("/api/v1/file", params={"path": nested["path"]}).json()["content"] == "nested"
     assert client.get("/api/v1/file", params={"path": "../outside"}).status_code == 403
     assert (
         client.put(

@@ -46,7 +46,7 @@ def files(path: str = "."):
         items.append(
             {
                 "name": item.name,
-                "path": str(item.relative_to(settings.PROJECT_ROOT.resolve())),
+                "path": item.relative_to(settings.PROJECT_ROOT.resolve()).as_posix(),
                 "isDirectory": item.is_dir(),
             }
         )
