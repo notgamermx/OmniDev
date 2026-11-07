@@ -41,7 +41,7 @@ def public_connector(value):
 def save_connector(kind, name, value):
     with _lock:
         data = load_connectors()
-        previous = data[kind].get(name, {})
+        previous = data.setdefault(kind, {}).get(name, {})
         # Empty password leaves the saved secret intact. Delete to clear it.
         if kind == "providers" and not value.get("api_key"):
             value["api_key"] = previous.get("api_key", "")

@@ -1,18 +1,18 @@
 {
   "bundle": {
     "targets": [
-      "nsis"
+      "msi"
     ],
     "resources": {
       "../../../dist/windows-engine/omnidev-cli/": "engine/"
     },
     "windows": {
-      "nsis": {
-        "installMode": "currentUser",
-        "displayLanguageSelector": false
-      },
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
+      },
+      "wix": {
+        "upgradeCode": "39978C4B-012F-4DB5-9392-6B17C456189F",
+        "language": "en-US"
       }
     },
     "icon": [

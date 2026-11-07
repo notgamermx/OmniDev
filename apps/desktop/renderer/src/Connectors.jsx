@@ -5,7 +5,6 @@ export default function Connectors({ act, refresh, busy }) {
   const [data, setData] = useState({ providers: [], harnesses: [] });
   const [models, setModels] = useState([]),
     [output, setOutput] = useState("");
-  const [preset, setPreset] = useState("freellmapi");
   async function load() {
     setData(await request("/connectors"));
     await refresh();
@@ -47,42 +46,23 @@ export default function Connectors({ act, refresh, busy }) {
       <div className="split connector-forms">
         <div>
           <h3>Model connection</h3>
-          <label>
-            Connection type
-            <select value={preset} onChange={(e) => setPreset(e.target.value)}>
-              <option value="freellmapi">FreeLLMAPI</option>
-              <option value="custom">OpenAI-compatible server</option>
-            </select>
-          </label>
           <p className="muted">
-            FreeLLMAPI routes across the providers you configure in its own
-            dashboard. Start it separately, then enter its unified key here.
+            Built-in provider setup and automatic routing are in Models. This
+            optional connection supports an existing compatible server.
           </p>
-          <form
-            key={preset}
-            className="form"
-            onSubmit={(e) => save("providers", e)}
-          >
+          <form className="form" onSubmit={(e) => save("providers", e)}>
             <label>
               ID
               <input
                 name="id"
                 required
                 pattern="custom_[a-z0-9_-]+"
-                defaultValue={
-                  preset === "freellmapi" ? "custom_freellmapi" : "custom_local"
-                }
+                defaultValue="custom_local"
               />
             </label>
             <label>
               Display name
-              <input
-                name="name"
-                required
-                defaultValue={
-                  preset === "freellmapi" ? "FreeLLMAPI" : "My model server"
-                }
-              />
+              <input name="name" required defaultValue="My model server" />
             </label>
             <label>
               API base URL
@@ -90,11 +70,7 @@ export default function Connectors({ act, refresh, busy }) {
                 name="base_url"
                 type="url"
                 required
-                defaultValue={
-                  preset === "freellmapi"
-                    ? "http://127.0.0.1:3001/v1"
-                    : "http://127.0.0.1:1234/v1"
-                }
+                defaultValue="http://127.0.0.1:1234/v1"
               />
             </label>
             <label>

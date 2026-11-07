@@ -62,3 +62,22 @@ def test_connector_file_dispatch(monkeypatch, tmp_path):
     assert sent[-1].method == "PUT"
     assert sent[-1].url.path == "/api/v1/connectors/providers/custom_free"
     assert json.loads(sent[-1].content) == definition
+
+
+def test_integrated_model_cli_dispatch(monkeypatch, tmp_path):
+    import json
+    import httpx
+    import app.cli as application_cli
+    original_client = httpx.Client
+    requests=[]
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json={"models":[]})
+    monkeypatch.setattr(application_cli.httpx, "Client", lambda **kwargs: original_client(**kwargs, transport=httpx.MockTransport(handler)))
+    monkeypatch.setattr("sys.argv",["omnidev","models","list","--provider","groq"])
+    assert application_cli.main()==0
+    assert requests[-1].url.path=="/api/v1/models/catalog/groq"
+    pool=tmp_path / "pool.json";pool.write_text(json.dumps({"routes":[{"provider":"groq","model":"selected"}]}))
+    monkeypatch.setattr("sys.argv",["omnidev","models","save-pool","--file",str(pool)])
+    assert application_cli.main()==0
+    assert requests[-1].method=="PUT" and requests[-1].url.path=="/api/v1/models/pool"

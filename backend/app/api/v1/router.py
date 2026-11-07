@@ -53,3 +53,6 @@ api_router.include_router(workbench.router, tags=["Workbench"])
 
 from app.api.v1.endpoints import connectors
 api_router.include_router(connectors.router, tags=["Connectors"])
+
+from app.api.v1.endpoints import models
+api_router.include_router(models.router, tags=["Models"])

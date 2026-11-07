@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { request, streamChat, connection } from "./services/api";
 import Connectors from "./Connectors";
+import Models from "./Models";
+import ModelPicker from "./ModelPicker";
 import { desktopConnection } from "./services/desktop";
 import Personalization, { loadAppearance } from "./Personalization";
 const icons = {
@@ -11,6 +13,7 @@ const icons = {
   Terminal: "⌘",
   Memory: "◷",
   Connectors: "⌁",
+  Models: "✺",
   Connection: "⊙",
   Settings: "⚙",
 };
@@ -21,6 +24,7 @@ const views = [
   "Files",
   "Terminal",
   "Memory",
+  "Models",
   "Connectors",
   "Connection",
   "Settings",
@@ -29,7 +33,6 @@ export default function App() {
   const [appearance, setAppearance] = useState(loadAppearance);
   const [threadSearch, setThreadSearch] = useState("");
   const [attachment, setAttachment] = useState(null);
-  const [modelOptions, setModelOptions] = useState([]);
   useEffect(() => {
     localStorage.setItem("omnidev-appearance", JSON.stringify(appearance));
     const element = document.documentElement;
@@ -46,8 +49,8 @@ export default function App() {
     [busy, setBusy] = useState(false),
     [online, setOnline] = useState(false);
   const [providers, setProviders] = useState([]),
-    [provider, setProvider] = useState("ollama"),
-    [model, setModel] = useState("llama3.1:8b");
+    [provider, setProvider] = useState("builtin"),
+    [model, setModel] = useState("auto");
   const [agents, setAgents] = useState([]),
     [agent, setAgent] = useState(""),
     [tasks, setTasks] = useState([]),
@@ -530,66 +533,21 @@ export default function App() {
                   <button
                     className="send"
                     aria-label="Send message"
-                    disabled={busy || !input.trim()}
+                    disabled={busy || !input.trim() || !model.trim()}
                   >
                     {busy ? "···" : "↑"}
                   </button>
                 </div>
               </form>
               <div className="model-bar">
-                {" "}
-                <select
-                  aria-label="Provider"
-                  value={provider}
-                  onChange={(e) => {
-                    setProvider(e.target.value);
-                    setModelOptions([]);
-                    if (e.target.value.startsWith("custom_"))
-                      act(async () => {
-                        const all = await request("/connectors");
-                        const c = all.providers.find(
-                          (p) => p.id === e.target.value,
-                        );
-                        if (c) setModel(c.model);
-                      });
-                  }}
-                >
-                  {providers.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.display_name || p.name}
-                      {p.configured ? "" : " · key needed"}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  aria-label="Model"
-                  list="model-options"
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
+                <ModelPicker
+                  providers={providers}
+                  provider={provider}
+                  model={model}
+                  onProvider={setProvider}
+                  onModel={setModel}
+                  busy={busy}
                 />
-                <datalist id="model-options">
-                  {modelOptions.map((m) => (
-                    <option key={m} value={m} />
-                  ))}
-                </datalist>
-                {provider.startsWith("custom_") && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      act(async () =>
-                        setModelOptions(
-                          (
-                            await request(
-                              `/connectors/providers/${provider}/models`,
-                            )
-                          ).models,
-                        ),
-                      )
-                    }
-                  >
-                    ↻ Models
-                  </button>
-                )}
                 <small>Ctrl + Enter to send</small>
               </div>
             </div>
@@ -619,20 +577,15 @@ export default function App() {
                   Name
                   <input name="name" required />
                 </label>
-                <label>
-                  Provider
-                  <select name="provider">
-                    {providers.map((p) => (
-                      <option key={p.name} value={p.name}>
-                        {p.display_name || p.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Model
-                  <input name="model" required defaultValue={model} />
-                </label>
+                <ModelPicker
+                  providers={providers}
+                  provider={provider}
+                  model={model}
+                  onProvider={setProvider}
+                  onModel={setModel}
+                  busy={busy}
+                  form
+                />
                 <fieldset>
                   <legend>Allowed tools</legend>
                   {[
@@ -955,6 +908,9 @@ export default function App() {
                 </article>
               ))}
             </>
+          )}
+          {view === "Models" && (
+            <Models act={act} refresh={refresh} busy={busy} />
           )}
           {view === "Connectors" && (
             <Connectors act={act} refresh={refresh} busy={busy} />

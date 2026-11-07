@@ -94,8 +94,13 @@ def get_connector(kind, name):
 @router.get("")
 async def list_connections():
     return {
-        kind: [{"id": name, **public_connector(value)} for name, value in rows.items()]
+        kind: [
+            {"id": name, **public_connector(value)}
+            for name, value in rows.items()
+            if kind != "providers" or name.startswith("custom_")
+        ]
         for kind, rows in load_connectors().items()
+        if kind in {"providers", "harnesses"}
     }
 
 

@@ -53,15 +53,19 @@ jobs:
       - name: Smoke test the installed Windows desktop
         shell: pwsh
         run: |
-          $Installer = Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
-          $Install = Start-Process -FilePath $Installer.FullName -ArgumentList '/S' -Wait -PassThru
-          if ($Install.ExitCode -ne 0) { throw "Installer failed: $($Install.ExitCode)" }
+          $Installer = Get-ChildItem apps/desktop/src-tauri/target/release/bundle/msi/*.msi | Select-Object -First 1
+          $InstallDir = "$env:LOCALAPPDATA\OmniDev"
+          $Install = Start-Process msiexec.exe -ArgumentList @('/i', "`"$($Installer.FullName)`"", '/qn', '/norestart', "INSTALLDIR=`"$InstallDir`"") -Wait -PassThru
+          if ($Install.ExitCode -notin @(0, 3010)) { throw "Installer failed: $($Install.ExitCode)" }
+          $Programs = @([Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('CommonPrograms'))
+          $Shortcuts = $Programs | ForEach-Object { Get-ChildItem $_ -Filter '*OmniDev*.lnk' -Recurse -ErrorAction SilentlyContinue }
+          if (!$Shortcuts) { throw 'OmniDev Start menu shortcut is missing' }
           python scripts/smoke_desktop_windows.py "$env:LOCALAPPDATA/OmniDev/omnidev.exe"
           if ($LASTEXITCODE -ne 0) { throw 'Desktop smoke failed' }
       - uses: actions/upload-artifact@v4
         with:
           name: OmniDev-Windows
           path: |
-            apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+            apps/desktop/src-tauri/target/release/bundle/msi/*.msi
             dist/OmniDev-Windows-CLI.zip
             dist/*.whl

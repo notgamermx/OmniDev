@@ -2,22 +2,52 @@
 
 # Model gateways and harness connectors
 
-## FreeLLMAPI
+<!-- coderabbit-ai-generated:v1 -->
 
-Install and start [FreeLLMAPI](https://github.com/tashfeenahmed/freellmapi) separately using its official Windows installer or deployment instructions. Add the provider keys you want in its dashboard and create a unified key there. Its [API documentation](https://github.com/tashfeenahmed/freellmapi/blob/main/docs/en/api/01-rest-api.md) defines the OpenAI-compatible `/v1/chat/completions` and `/v1/models` interfaces used here.
+<!-- coderabbit-ai-generated-section:v1:53c22a574c726c32467cbfa18c7e5631915e0ad97afecd645add740aac7e15b3 -->
 
-In OmniDev **Connectors → Model connection**, select FreeLLMAPI and save:
+## Built-in providers, models and routing
 
-- ID: `custom_freellmapi`
-- API base URL: `http://127.0.0.1:3001/v1` (or your actual server URL)
-- API key: the gateway's unified key
-- Model: `auto`, a catalog model ID, or a documented routing strategy such as `auto:fast`
+OmniDev includes its own provider management and model router in the Python engine. No separate FreeLLMAPI installation or gateway process is required.
 
-Choose that connection in Chat or Agents. **Discover models** / **Models** loads the live gateway catalog. Streaming, retry handling, and the agent execution loop use the existing shared adapter. Free quotas and provider availability are controlled by your gateway and provider accounts.
+1. Open **Models** from the sidebar and choose a provider. Built-in adapters cover Gemini, Groq, OpenRouter, Ollama, Mistral, Cloudflare, Cohere, NVIDIA NIM, Cerebras, Hugging Face, DeepInfra, Together, SambaNova and OpenAI.
+2. Enter your provider API key and save it. Cloudflare also requires an account ID. Keys are encrypted in the engine home; existing `.env` keys continue to work. Ollama needs a separately running local model service but no cloud key.
+3. Click **Load available models**, filter the live catalog, select a model and click **Add to built-in router**. Model IDs can also be entered manually if the provider cannot list them. OpenRouter's optional free filter uses the catalog's input/output pricing; other providers' free-tier availability depends on your account and quotas.
+4. Add other models/providers and arrange the fallback order. Enable or disable individual entries.
+5. In Chat or Agents choose **OmniDev · built-in router → Automatic**. Alternatively, choose a provider and a specific model from its dropdown. The **Models** refresh button reloads the current catalog. These controls are shared by desktop and web.
 
-Any OpenAI-compatible chat server can use the same form: LM Studio, llama.cpp, a proxy or your own gateway. Use the base URL including `/v1`, without `/chat/completions`. Remote connections require HTTPS; HTTP is allowed on loopback. Native provider adapters remain available through `.env`.
+The router tries enabled, configured models in your saved order. A rate limit puts that model on a 30-second cooldown; another provider error puts it on a 5-second cooldown. Models on cooldown are skipped. If a stream has already emitted an event, OmniDev reports an interruption instead of splicing in a different response. Cooldowns are in memory and reset at engine restart. There are no bundled cloud keys or unlimited free quotas.
 
-## CLI model connection
+### CLI built-in setup
+
+Create a private JSON file outside Git containing `{"api_key":"YOUR_PROVIDER_KEY"}` and run:
+
+```text
+omnidev models setup --provider groq --file credentials.json
+omnidev models list --provider groq
+```
+
+Put the model IDs you chose into a private pool file:
+
+```json
+{"routes":[{"provider":"groq","model":"YOUR_CHOSEN_MODEL","enabled":true}]}
+```
+
+```text
+omnidev models save-pool --file pool.json
+omnidev models pool
+omnidev chat --interactive
+```
+
+Chat defaults to the built-in router and `auto`. Direct model selection remains available with `--provider PROVIDER --model MODEL`. Remove local credential input files after setup if you do not need them.
+
+## Optional external gateways
+
+Existing custom connections remain supported under **Connectors**. They are optional for users who already run a compatible server, including FreeLLMAPI, LM Studio or another gateway. Enter its API base URL including `/v1`, its key if required and a default model. Remote URLs require HTTPS; HTTP is accepted on loopback. FreeLLMAPI's [API reference](https://github.com/tashfeenahmed/freellmapi/blob/main/docs/en/api/01-rest-api.md) documents its own model names and routing strategies.
+
+
+
+<!-- /coderabbit-ai-generated:v1 -->## CLI model connection
 
 Save this JSON to a local private file outside your Git checkout:
 

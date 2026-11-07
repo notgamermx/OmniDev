@@ -11,7 +11,6 @@ from app.core.config import settings
 from app.schemas.chat import ChatCompletionRequest, ProviderInfo
 from app.services.llm_providers import (
     PROVIDERS,
-    PROVIDER_BY_ID,
     has_provider,
     MissingProviderCredential,
     ProviderError,
@@ -24,12 +23,8 @@ router = APIRouter()
 
 
 def _configured(provider_id: str) -> bool:
-    definition = PROVIDER_BY_ID[provider_id]
-    if definition.env_key:
-        credential = getattr(settings, definition.env_key)
-        if not credential or not credential.get_secret_value().strip():
-            return False
-    return not definition.account_id_env or bool(getattr(settings, definition.account_id_env))
+    from app.services.model_router import configured
+    return configured(provider_id, settings)
 
 
 def _normalize_completion(data: dict[str, Any], provider_id: str, model: str) -> dict[str, Any]:
@@ -41,6 +36,7 @@ def _normalize_completion(data: dict[str, Any], provider_id: str, model: str) ->
         "id": data.get("id", ""),
         "model": data.get("model", model),
         "provider": provider_id,
+        **({"routed_provider": data["routed_provider"]} if "routed_provider" in data else {}),
         "choices": [{
             "index": choice.get("index", 0),
             "message": choice.get("message", {"role": "assistant", "content": ""}),
@@ -71,9 +67,10 @@ async def list_providers() -> list[ProviderInfo]:
         for provider in PROVIDERS
     ]
     from app.services.connector_service import load_connectors
-    return builtins + [ProviderInfo(name=name, display_name=value["name"], category="connector", api_style="openai_compatible",
+    integrated = ProviderInfo(name="builtin", display_name="OmniDev · built-in router", category="builtin", api_style="openai_compatible", free_access="your_selected_models", docs_url="", connect_url="", configured=_configured("builtin"))
+    return [integrated] + builtins + [ProviderInfo(name=name, display_name=value["name"], category="connector", api_style="openai_compatible",
         free_access="check_gateway_plan", docs_url="", connect_url="", configured=True)
-        for name, value in load_connectors()["providers"].items()]
+        for name, value in load_connectors()["providers"].items() if name.startswith("custom_")]
 
 
 @router.post("/completions/", summary="Create a chat completion")

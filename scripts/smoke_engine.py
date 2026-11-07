@@ -58,7 +58,36 @@ def main():
                     raise RuntimeError("Engine readiness timed out")
                 with urllib.request.urlopen(url + "/app/", timeout=3) as response:
                     assert b'<div id="root">' in response.read()
+                credentials = Path(directory) / "provider.json"
+                credentials.write_text(
+                    json.dumps({"api_key": "synthetic-install-smoke-key"})
+                )
+                pool = Path(directory) / "pool.json"
+                pool.write_text(
+                    json.dumps(
+                        {
+                            "routes": [
+                                {
+                                    "provider": "groq",
+                                    "model": "synthetic-model",
+                                    "enabled": True,
+                                }
+                            ]
+                        }
+                    )
+                )
                 for arguments in (
+                    ["models", "list"],
+                    [
+                        "models",
+                        "setup",
+                        "--provider",
+                        "groq",
+                        "--file",
+                        str(credentials),
+                    ],
+                    ["models", "save-pool", "--file", str(pool)],
+                    ["models", "pool"],
                     ["health"],
                     [
                         "projects",

@@ -1,4 +1,4 @@
-"""Run on Windows: bundle Python and the CLI, then build a Tauri NSIS installer."""
+"""Run on Windows: bundle Python and the CLI, then build a Tauri MSI installer."""
 
 from pathlib import Path
 import shutil

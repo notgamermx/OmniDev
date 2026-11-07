@@ -8,9 +8,16 @@
 
 Windows packages are produced by the **Verify OmniDev → windows-desktop** GitHub Actions job. After pushing this source to your repository, open **Actions → Verify OmniDev → Run workflow**, then download the **OmniDev-Windows** artifact from the successful run. Extract that artifact first.
 
-- Run `OmniDev_*_x64-setup.exe` (the exact name includes the version). The per-user NSIS installer installs the desktop app, Python engine, and CLI. It installs Microsoft WebView2 if needed, which requires internet access. Python, Node and Rust are not required for this installed app.
-- Open OmniDev from the Start menu. It starts an authenticated engine on a free loopback port, waits for readiness, and closes that process tree when you exit. A second launch focuses the existing app.
-- The standalone `OmniDev-Windows-CLI.zip` contains `omnidev-cli.exe` and its `_internal` folder. Keep them together. Extract to a directory you own; optionally add that directory to your user PATH.
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:adc8f305f3e31c2843608f4d87b137415a978280e9b616e2e5506d6fc1632407 -->
+
+- Open the `.msi` Windows Installer package and follow its installation steps. It installs OmniDev as a normal application, including its engine, dependencies and Start menu shortcut. The build bundles WebView2 installation support; internet access may be required if WebView2 is missing. Users do not need Python, Node or Rust for the installed app.
+- Press the Windows key, search **OmniDev**, and open it. The engine starts automatically with the app. A second launch focuses the existing window. Closing the app stops its local engine.
+- Uninstall OmniDev using **Settings → Apps → Installed apps**. User data stays in `%USERPROFILE%\.omnidev` (or `OMNIDEV_HOME`), separate from installed program files.
+- The optional `OmniDev-Windows-CLI.zip` is for terminal users. Extract it and keep its executable and `_internal` folder together. The desktop installer already contains the engine and CLI.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 With the desktop app open:
 
@@ -45,7 +52,13 @@ This script creates `.venv`, installs Python dependencies, builds the UI and sta
 .\.venv\Scripts\omnidev.exe chat --provider ollama --model llama3.1:8b --interactive
 ```
 
-Model access requires your provider key or a running local model. In **Connectors**, add FreeLLMAPI or another compatible endpoint. See [connector instructions](CONNECTORS.md).
+Model access requires your provider key or a running local model. <!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:1b6f33e782db832f2965ca7828dc46628f9a26a58af47b21f3a75437f8dea5ac -->
+
+In **Models**, set up providers, browse models and choose your fallback order. No separate model gateway is required.
+
+<!-- /coderabbit-ai-generated:v1 --> See [connector instructions](CONNECTORS.md).
 
 ## Build the installer yourself
 
@@ -58,7 +71,13 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe scripts/smoke_engine.py dist/windows-engine/omnidev-cli/omnidev-cli.exe
 ```
 
-The NSIS installer is under `apps/desktop/src-tauri/target/release/bundle/nsis/`; the portable CLI ZIP and wheel are under `dist/`. Packages are unsigned until you configure your own signing in CI. Native Windows validation runs in CI; a build on Linux does not establish Windows runtime compatibility.
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:af8f4c9ec91e02faed6816b370c9a33667b9137f649d03a60f8744657b2b3d79 -->
+
+The MSI installer is under `apps/desktop/src-tauri/target/release/bundle/msi/`
+
+<!-- /coderabbit-ai-generated:v1 -->; the portable CLI ZIP and wheel are under `dist/`. Packages are unsigned until you configure your own signing in CI. Native Windows validation runs in CI; a build on Linux does not establish Windows runtime compatibility.
 
 ## Development source stays small
 

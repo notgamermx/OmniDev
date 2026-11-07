@@ -12,9 +12,21 @@ A local development environment with a FastAPI/SQLite engine, a React web workbe
 
 ## Windows, gateways and personalization
 
-For Windows installation, the bundled desktop/CLI build and source startup, see [Windows guide](docs/WINDOWS.md). GitHub Actions produces an NSIS installer and portable CLI ZIP. Native Windows results must be checked in that workflow.
+<!-- coderabbit-ai-generated:v1 -->
 
-The workbench now follows a minimal light layout with no profile section. Settings includes light/dark/system themes, accents, density, fonts, motion and response preferences. Connectors supports FreeLLMAPI, custom OpenAI-compatible gateways and explicitly installed command harnesses. See [connector guide](docs/CONNECTORS.md).
+<!-- coderabbit-ai-generated-section:v1:125f8e337df73207f35d58543e1e867ff2620e33f04f45db8666f286d36acc4f -->
+
+For Windows installation, the bundled desktop/CLI build and source startup, see [Windows guide](docs/WINDOWS.md). GitHub Actions produces an MSI installer with a Start menu shortcut and an optional portable CLI ZIP. Install the MSI, then search for OmniDev in Start. Native Windows results must be checked in that workflow.
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:160f930e984d61e821f2872fa47e991822de48edf06f418a425305d010b80566 -->
+
+The workbench uses a minimal layout with no profile section and supports themes, accents, density, fonts and response preferences. **Models** includes provider key setup, live model browsing and a built-in fallback router shared by chat, agents and CLI. **Connectors** remains available for optional external gateways and command harnesses. See the [model and connector guide](docs/CONNECTORS.md).
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 ## Start from source
 

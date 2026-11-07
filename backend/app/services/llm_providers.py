@@ -255,10 +255,13 @@ class CohereProvider(OpenAICompatibleProvider):
 
 def has_provider(provider_id: str) -> bool:
     from app.services.connector_service import load_connectors
-    return provider_id in PROVIDER_BY_ID or provider_id in load_connectors()["providers"]
+    return provider_id == "builtin" or provider_id in PROVIDER_BY_ID or provider_id in load_connectors()["providers"]
 
 
 def make_provider(provider_id: str, config: Settings = settings, *, transport: httpx.AsyncBaseTransport | None = None) -> OpenAICompatibleProvider:
+    if provider_id == "builtin":
+        from app.services.model_router import ModelPool
+        return ModelPool(config, transport)
     definition = PROVIDER_BY_ID.get(provider_id)
     if definition is None:
         from app.services.connector_service import load_connectors
@@ -271,6 +274,10 @@ def make_provider(provider_id: str, config: Settings = settings, *, transport: h
     credential = getattr(config, definition.env_key) if definition.env_key else None
     api_key = credential.get_secret_value().strip() or None if credential else None
     account_id = getattr(config, definition.account_id_env) if definition.account_id_env else None
+    from app.services.connector_service import load_connectors
+    saved = load_connectors()["providers"].get(provider_id, {})
+    api_key = saved.get("api_key") or api_key
+    account_id = saved.get("account_id") or account_id
     provider_type = CohereProvider if definition.api_style == "native" else OpenAICompatibleProvider
     if provider_id == "openai" or provider_id in config.PROVIDER_URLS:
         from dataclasses import replace

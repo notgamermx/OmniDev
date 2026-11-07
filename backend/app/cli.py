@@ -334,6 +334,10 @@ def main():
     server.add_argument("--port", type=int, default=None)
     subs.add_parser("health")
     subs.add_parser("providers")
+    models = subs.add_parser("models", help="Browse models and manage the built-in router")
+    models.add_argument("action", choices=["list", "pool", "save-pool", "setup"])
+    models.add_argument("--provider", default="builtin")
+    models.add_argument("--file", help="Private JSON file with routes or provider credentials")
     for name in ("agents", "tasks", "projects", "sessions"):
         sub = subs.add_parser(name)
         sub.add_argument(
@@ -369,8 +373,8 @@ def main():
     memory.add_argument("--project", type=int)
     chat = subs.add_parser("chat")
     chat.add_argument("message", nargs="?")
-    chat.add_argument("--provider", default="ollama")
-    chat.add_argument("--model", default="llama3.1:8b")
+    chat.add_argument("--provider", default="builtin")
+    chat.add_argument("--model", default="auto")
     chat.add_argument("--session")
     chat.add_argument("--interactive", action="store_true")
     args = parser.parse_args()
@@ -417,6 +421,17 @@ def main():
             cmd = args.command
             if cmd == "health":
                 show(req("health/"))
+            elif cmd == "models":
+                if args.action == "list":
+                    show(req("models/catalog/" + quote(args.provider, safe="")))
+                elif args.action == "pool":
+                    show(req("models/pool"))
+                else:
+                    if not args.file:
+                        parser.error("--file is required")
+                    body = json.loads(Path(args.file).read_text(encoding="utf-8"))
+                    path = "models/pool" if args.action == "save-pool" else "models/providers/" + quote(args.provider, safe="")
+                    show(req(path, "PUT", body))
             elif cmd == "providers":
                 show(req("chat/providers/"))
             elif cmd in {"agents", "tasks", "projects", "sessions"}:
