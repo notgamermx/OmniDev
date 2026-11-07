@@ -1,13 +1,19 @@
+import { desktopConnection } from "./desktop";
 export function connection() {
+  const override = localStorage.getItem("omnidev-url");
   return {
     url:
-      localStorage.getItem("omnidev-url") ||
-      (location.protocol === "http:" || location.protocol === "https:"
-        ? location.hostname === "tauri.localhost"
-          ? "http://127.0.0.1:8000"
-          : ""
+      override ||
+      desktopConnection?.url ||
+      ((location.protocol === "http:" || location.protocol === "https:") &&
+      location.hostname !== "tauri.localhost"
+        ? ""
         : "http://127.0.0.1:8000"),
-    token: sessionStorage.getItem("omnidev-token") || "",
+    token: override
+      ? sessionStorage.getItem("omnidev-token") || ""
+      : desktopConnection?.token ||
+        sessionStorage.getItem("omnidev-token") ||
+        "",
   };
 }
 export async function request(path, method = "GET", body) {

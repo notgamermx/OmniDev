@@ -12,6 +12,7 @@ from app.schemas.chat import ChatCompletionRequest, ProviderInfo
 from app.services.llm_providers import (
     PROVIDERS,
     PROVIDER_BY_ID,
+    has_provider,
     MissingProviderCredential,
     ProviderError,
     ProviderRateLimitError,
@@ -55,9 +56,10 @@ def _normalize_completion(data: dict[str, Any], provider_id: str, model: str) ->
 
 @router.get("/providers/", response_model=list[ProviderInfo], summary="List supported AI providers")
 async def list_providers() -> list[ProviderInfo]:
-    return [
+    builtins = [
         ProviderInfo(
             name=provider.id,
+            display_name=provider.name,
             category=provider.category,
             api_style=provider.api_style,
             free_access=provider.free_access,
@@ -68,11 +70,15 @@ async def list_providers() -> list[ProviderInfo]:
         )
         for provider in PROVIDERS
     ]
+    from app.services.connector_service import load_connectors
+    return builtins + [ProviderInfo(name=name, display_name=value["name"], category="connector", api_style="openai_compatible",
+        free_access="check_gateway_plan", docs_url="", connect_url="", configured=True)
+        for name, value in load_connectors()["providers"].items()]
 
 
 @router.post("/completions/", summary="Create a chat completion")
 async def chat_completion(request: ChatCompletionRequest) -> dict[str, Any]:
-    if request.provider not in PROVIDER_BY_ID:
+    if not has_provider(request.provider):
         raise HTTPException(status_code=404, detail="Unknown provider")
     if request.stream:
         raise HTTPException(status_code=400, detail="Use /completions/stream for streaming responses")
@@ -105,7 +111,7 @@ async def chat_completion(request: ChatCompletionRequest) -> dict[str, Any]:
 
 @router.post("/completions/stream", summary="Stream a chat completion")
 async def chat_completion_stream(request: ChatCompletionRequest) -> StreamingResponse:
-    if request.provider not in PROVIDER_BY_ID:
+    if not has_provider(request.provider):
         raise HTTPException(status_code=404, detail="Unknown provider")
     try:
         provider = make_provider(request.provider)

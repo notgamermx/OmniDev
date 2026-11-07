@@ -300,15 +300,26 @@ def cmd_memory_session(cli: OmniDevCLI, args) -> int:
     return 0
 
 
+def _desktop_connection():
+    import os
+    if os.name == "nt":
+        try:
+            return json.loads((Path(os.environ.get("OMNIDEV_HOME", Path.home() / ".omnidev")) / "desktop-connection.json").read_text())
+        except (OSError, ValueError):
+            pass
+    return {}
+
+
 def main():
     import os
     from urllib.parse import quote
 
+    desktop = _desktop_connection()
     parser = argparse.ArgumentParser(
         prog="omnidev", description="OmniDev application and CLI"
     )
     parser.add_argument(
-        "--url", default=os.environ.get("OMNIDEV_URL", "http://127.0.0.1:8000")
+        "--url", default=os.environ.get("OMNIDEV_URL", desktop.get("url", "http://127.0.0.1:8000"))
     )
     parser.add_argument(
         "--token",
@@ -333,6 +344,13 @@ def main():
         sub.add_argument("id", nargs="?")
         sub.add_argument("--json", default="{}", help="JSON fields for creation")
         sub.add_argument("--path", default=".")
+    connectors = subs.add_parser("connectors", help="Manage provider and command harness connections")
+    connectors.add_argument("action", choices=["list", "save", "delete", "models", "install", "run"])
+    connectors.add_argument("kind", nargs="?", choices=["providers", "harnesses"])
+    connectors.add_argument("id", nargs="?")
+    connectors.add_argument("--file", help="JSON connector definition; avoids keys in shell history")
+    connectors.add_argument("--prompt")
+    connectors.add_argument("--path", default=".")
     files = subs.add_parser("files")
     files.add_argument("path", nargs="?", default=".")
     read = subs.add_parser("read")
@@ -356,6 +374,8 @@ def main():
     chat.add_argument("--session")
     chat.add_argument("--interactive", action="store_true")
     args = parser.parse_args()
+    if not args.token and args.url == desktop.get("url"):
+        args.token = desktop.get("token", "")
     if args.command == "serve":
         from alembic import command
         from alembic.config import Config
@@ -374,7 +394,8 @@ def main():
             parser.error(
                 "Remote binding requires API_TOKEN with at least 32 characters"
             )
-        uvicorn.run("app.main:app", host=host, port=args.port or settings.API_PORT)
+        from app.main import app
+        uvicorn.run(app, host=host, port=args.port or settings.API_PORT)
         return 0
     headers = {"Authorization": "Bearer " + args.token} if args.token else {}
     try:
@@ -424,6 +445,31 @@ def main():
                     path = "tasks/"
                     body = int(args.id)
                 show(req(path, method, body))
+            elif cmd == "connectors":
+                if args.action == "list":
+                    show(req("connectors"))
+                else:
+                    if not args.kind or not args.id:
+                        parser.error("Connector kind and ID are required")
+                    path = f"connectors/{args.kind}/{quote(args.id, safe='')}"
+                    if args.action == "save":
+                        if not args.file:
+                            parser.error("--file is required")
+                        show(req(path, "PUT", json.loads(Path(args.file).read_text(encoding="utf-8"))))
+                    elif args.action == "delete":
+                        show(req(path, "DELETE"))
+                    elif args.action == "models":
+                        show(req(path + "/models"))
+                    elif args.action == "install":
+                        result = req(path + "/install", "POST")
+                        show(result)
+                        return result["exit_code"] or 0
+                    else:
+                        if not args.prompt:
+                            parser.error("--prompt is required")
+                        result = req(path + "/run", "POST", {"prompt": args.prompt, "path": args.path})
+                        print(result["output"], end="")
+                        return result["exit_code"] or 0
             elif cmd == "files":
                 show(req("files?path=" + quote(args.path)))
             elif cmd == "read":

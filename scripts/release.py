@@ -10,11 +10,14 @@ ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument("--output", type=Path, default=ROOT / "dist")
 args = parser.parse_args()
+npm = shutil.which("npm")
+if not npm:
+    raise SystemExit("Install Node.js and npm before building.")
 subprocess.run(
-    ["npm", "ci", "--prefix", str(ROOT / "apps/desktop/renderer")], check=True
+    [npm, "ci", "--prefix", str(ROOT / "apps/desktop/renderer")], check=True
 )
 subprocess.run(
-    ["npm", "--prefix", str(ROOT / "apps/desktop/renderer"), "run", "build"], check=True
+    [npm, "--prefix", str(ROOT / "apps/desktop/renderer"), "run", "build"], check=True
 )
 if (ROOT / "backend/app/static").exists():
     shutil.rmtree(ROOT / "backend/app/static")

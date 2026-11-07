@@ -8,7 +8,7 @@ from app.services.agent_service import (
     AgentService,
     get_agent_service as _get_agent_service,
 )
-from app.services.llm_providers import PROVIDER_BY_ID
+from app.services.llm_providers import has_provider
 
 router = APIRouter(tags=["Agents"])
 
@@ -59,7 +59,7 @@ async def create_agent(
 ):
     """Create a new AI agent definition."""
     # Validate provider
-    if provider not in PROVIDER_BY_ID:
+    if not has_provider(provider):
         raise HTTPException(status_code=404, detail=f"Provider '{provider}' not found")
 
     # Validate tools if provided

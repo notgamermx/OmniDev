@@ -1,5 +1,19 @@
 import React, { useEffect, useState } from "react";
 import { request, streamChat, connection } from "./services/api";
+import Connectors from "./Connectors";
+import { desktopConnection } from "./services/desktop";
+import Personalization, { loadAppearance } from "./Personalization";
+const icons = {
+  Chat: "✧",
+  Agents: "♧",
+  Tasks: "☷",
+  Files: "▱",
+  Terminal: "⌘",
+  Memory: "◷",
+  Connectors: "⌁",
+  Connection: "⊙",
+  Settings: "⚙",
+};
 const views = [
   "Chat",
   "Agents",
@@ -7,16 +21,28 @@ const views = [
   "Files",
   "Terminal",
   "Memory",
+  "Connectors",
   "Connection",
+  "Settings",
 ];
 export default function App() {
+  const [appearance, setAppearance] = useState(loadAppearance);
+  const [threadSearch, setThreadSearch] = useState("");
+  const [attachment, setAttachment] = useState(null);
+  const [modelOptions, setModelOptions] = useState([]);
+  useEffect(() => {
+    localStorage.setItem("omnidev-appearance", JSON.stringify(appearance));
+    const element = document.documentElement;
+    for (const [key, value] of Object.entries(appearance))
+      element.dataset[key] = value;
+  }, [appearance]);
   const [dialog, setDialog] = useState(null);
   function ask(title, value = "") {
     return new Promise((resolve) => setDialog({ title, value, resolve }));
   }
 
   const [view, setView] = useState("Chat"),
-    [error, setError] = useState(""),
+    [error, setError] = useState(window.omnidevStartupError || ""),
     [busy, setBusy] = useState(false),
     [online, setOnline] = useState(false);
   const [providers, setProviders] = useState([]),
@@ -46,7 +72,7 @@ export default function App() {
     [root, setRoot] = useState(""),
     [terminal, setTerminal] = useState(false);
   const [url, setUrl] = useState(connection().url),
-    [token, setToken] = useState(connection().token);
+    [token, setToken] = useState(sessionStorage.getItem("omnidev-token") || "");
   async function act(fn) {
     setError("");
     setBusy(true);
@@ -77,6 +103,10 @@ export default function App() {
     setOnline(true);
   }
   useEffect(() => {
+    if (window.omnidevStartupError) {
+      setError(window.omnidevStartupError);
+      return;
+    }
     act(refresh);
   }, []);
   useEffect(() => {
@@ -119,7 +149,12 @@ export default function App() {
   async function send(e) {
     e.preventDefault();
     if (!input.trim()) return;
-    const text = input;
+    const text =
+      input +
+      (attachment
+        ? `\n\nFile: ${attachment.name}\n\`\`\`\n${attachment.content}\n\`\`\``
+        : "");
+    setAttachment(null);
     setInput("");
     await act(async () => {
       let id = session || (await newSession());
@@ -128,10 +163,29 @@ export default function App() {
       await request(`/sessions/${id}`, "PUT", { messages: history });
       let response = "";
       try {
-        await streamChat({ provider, model, messages: history }, (chunk) => {
-          response += chunk;
-          setMessages([...history, { role: "assistant", content: response }]);
-        });
+        const instruction = {
+          ask: "Answer the user's question. Explain clearly and do not claim to have executed tools.",
+          plan: "Create a concrete implementation plan with steps, risks and verification. Do not implement or claim tool execution.",
+          code: "Help implement the user's request with usable code and verification commands. Chat has no execution tools; suggest Tasks for execution.",
+        }[appearance.mode];
+        await streamChat(
+          {
+            provider,
+            model,
+            messages: [
+              {
+                role: "system",
+                content:
+                  instruction + " Response style: " + appearance.style + ".",
+              },
+              ...history,
+            ],
+          },
+          (chunk) => {
+            response += chunk;
+            setMessages([...history, { role: "assistant", content: response }]);
+          },
+        );
       } finally {
         const updated = [...history, { role: "assistant", content: response }];
         setMessages(updated);
@@ -217,9 +271,22 @@ export default function App() {
       )}
       <aside>
         <div className="brand">
-          <span>O</span> OmniDev <small>1.0</small>
+          <span>✦</span> OmniDev <small>WORKSPACE</small>
         </div>
-        <p className="muted">Your development workspace</p>
+        <button
+          className="sidebar-search"
+          onClick={() => {
+            setView("Chat");
+            setTimeout(
+              () => document.getElementById("thread-search")?.focus(),
+              0,
+            );
+          }}
+        >
+          ⌕ <span>Find a conversation</span>
+          <kbd>⌘ K</kbd>
+        </button>
+        <span className="nav-label">Workspace</span>
         <nav>
           {views.map((v) => (
             <button
@@ -230,10 +297,21 @@ export default function App() {
                 if (v === "Files") act(() => listFiles(directory));
               }}
             >
-              {v}
+              <span className="nav-icon" aria-hidden="true">
+                {icons[v]}
+              </span>
+              {v === "Chat" ? "Ask AI" : v}
             </button>
           ))}
         </nav>
+        <div className="sidebar-note">
+          <span>✧</span>
+          <strong>A little help, a lot of possibility.</strong>
+          <p>Your ideas. Your models. Your workspace.</p>
+          <button onClick={() => setView("Connectors")}>
+            Connect your tools ↗
+          </button>
+        </div>
         <div className="connection">
           <i className={online ? "online" : ""} />{" "}
           {online ? "Connected" : "Disconnected"}
@@ -241,8 +319,26 @@ export default function App() {
         </div>
       </aside>
       <main>
+        <div className="breadcrumb">
+          <span>Workspace</span>
+          <span> / </span>
+          <strong>{view === "Chat" ? "Ask AI" : view}</strong>
+          <button
+            aria-label="Toggle theme"
+            title="Toggle light and dark"
+            onClick={() =>
+              setAppearance({
+                ...appearance,
+                theme: appearance.theme === "dark" ? "light" : "dark",
+              })
+            }
+          >
+            ◐
+          </button>
+        </div>
         <header>
-          <h1>{view}</h1>
+          <h1>{view === "Chat" ? "Ask AI" : view}</h1>
+          {busy && <small role="status">Working…</small>}
           <select
             aria-label="Project"
             value={project}
@@ -270,10 +366,17 @@ export default function App() {
             <button onClick={() => setError("")}>Dismiss</button>
           </div>
         )}
-        <section>
+        <section className={view === "Chat" ? "chat-section" : ""}>
           {view === "Chat" && (
             <div className="chat">
-              <div className="toolbar">
+              <div className="toolbar chat-tools">
+                <input
+                  id="thread-search"
+                  aria-label="Search threads"
+                  placeholder="⌕  Search threads"
+                  value={threadSearch}
+                  onChange={(e) => setThreadSearch(e.target.value)}
+                />
                 <select
                   aria-label="Conversation"
                   disabled={busy}
@@ -291,29 +394,31 @@ export default function App() {
                   }
                 >
                   <option value="">New conversation</option>
-                  {sessions.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
+                  {sessions
+                    .filter((s) =>
+                      s.name.toLowerCase().includes(threadSearch.toLowerCase()),
+                    )
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
                 </select>
-                <select
-                  aria-label="Provider"
-                  value={provider}
-                  onChange={(e) => setProvider(e.target.value)}
+                {button("Create folder", async () => {
+                  const path = await ask("Folder path relative to workspace");
+                  if (path) await request("/directories", "POST", { path });
+                })}
+                <button
+                  className="primary"
+                  disabled={busy}
+                  onClick={() => {
+                    setSession("");
+                    setMessages([]);
+                    setInput("");
+                  }}
                 >
-                  {providers.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.name}
-                      {p.configured ? "" : " · key needed"}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  aria-label="Model"
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                />
+                  + New chat
+                </button>
                 {session &&
                   button("Delete conversation", async () => {
                     await request(`/sessions/${session}`, "DELETE");
@@ -325,30 +430,168 @@ export default function App() {
               <div className="messages">
                 {!messages.length && (
                   <div className="empty">
-                    <h2>Build something.</h2>
-                    <p>
-                      Choose a provider and model, then start a conversation.
-                      Use Tasks to let an agent work on your project.
-                    </p>
+                    <div className="orbital" aria-hidden="true">
+                      <div className="orbital-core">✦</div>
+                      <div className="orbit one" />
+                      <div className="orbit two" />
+                      <div className="orbit three" />
+                    </div>
+                    <span className="eyebrow">
+                      A LITTLE SPARK. ENDLESS POSSIBILITIES.
+                    </span>
+                    <h2>
+                      Hello, <span>what’s on your mind?</span>
+                    </h2>
+                    <p>From a first thought to your next big thing.</p>
                   </div>
                 )}
                 {messages.map((m, i) => (
                   <article className={"message " + m.role} key={i}>
                     <small>{m.role}</small>
-                    <pre>{m.content || (busy ? "Thinking…" : "No response")}</pre>
+                    <pre>
+                      {m.content || (busy ? "Thinking…" : "No response")}
+                    </pre>
                   </article>
                 ))}
               </div>
               <form onSubmit={send} className="compose">
+                <div className="compose-heading">
+                  <span>✦</span>{" "}
+                  {appearance.mode === "plan"
+                    ? "Let’s make a plan"
+                    : appearance.mode === "code"
+                      ? "Let’s build something"
+                      : "Ask me anything"}
+                  <small> — a little clarity goes a long way.</small>
+                </div>
                 <textarea
                   aria-label="Message"
                   placeholder="Ask a question or describe an idea…"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   disabled={busy}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) send(e);
+                  }}
                 />
-                <button disabled={busy || !input.trim()}>Send</button>
+                {attachment && (
+                  <div className="attachment">
+                    {attachment.name}
+                    <button type="button" onClick={() => setAttachment(null)}>
+                      Remove
+                    </button>
+                  </div>
+                )}
+                <div className="compose-footer">
+                  <label className="attach-button">
+                    ↗ Attach text
+                    <input
+                      type="file"
+                      aria-label="Attach text file"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f)
+                          act(async () => {
+                            if (f.size > 200000)
+                              throw new Error(
+                                "Choose a text file smaller than 200 KB",
+                              );
+                            const text = await f.text();
+                            if (text.includes("\0"))
+                              throw new Error("Please attach a text file");
+                            setAttachment({ name: f.name, content: text });
+                          });
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                  <select
+                    aria-label="Chat mode"
+                    value={appearance.mode}
+                    onChange={(e) =>
+                      setAppearance({ ...appearance, mode: e.target.value })
+                    }
+                  >
+                    <option value="ask">Ask</option>
+                    <option value="plan">Plan</option>
+                    <option value="code">Code</option>
+                  </select>
+                  <select
+                    aria-label="Response style"
+                    value={appearance.style}
+                    onChange={(e) =>
+                      setAppearance({ ...appearance, style: e.target.value })
+                    }
+                  >
+                    <option value="balanced">Balanced</option>
+                    <option value="concise">Concise</option>
+                    <option value="detailed">Detailed</option>
+                  </select>
+                  <button
+                    className="send"
+                    aria-label="Send message"
+                    disabled={busy || !input.trim()}
+                  >
+                    {busy ? "···" : "↑"}
+                  </button>
+                </div>
               </form>
+              <div className="model-bar">
+                {" "}
+                <select
+                  aria-label="Provider"
+                  value={provider}
+                  onChange={(e) => {
+                    setProvider(e.target.value);
+                    setModelOptions([]);
+                    if (e.target.value.startsWith("custom_"))
+                      act(async () => {
+                        const all = await request("/connectors");
+                        const c = all.providers.find(
+                          (p) => p.id === e.target.value,
+                        );
+                        if (c) setModel(c.model);
+                      });
+                  }}
+                >
+                  {providers.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.display_name || p.name}
+                      {p.configured ? "" : " · key needed"}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  aria-label="Model"
+                  list="model-options"
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                />
+                <datalist id="model-options">
+                  {modelOptions.map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+                {provider.startsWith("custom_") && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      act(async () =>
+                        setModelOptions(
+                          (
+                            await request(
+                              `/connectors/providers/${provider}/models`,
+                            )
+                          ).models,
+                        ),
+                      )
+                    }
+                  >
+                    ↻ Models
+                  </button>
+                )}
+                <small>Ctrl + Enter to send</small>
+              </div>
             </div>
           )}
           {view === "Agents" && (
@@ -380,7 +623,9 @@ export default function App() {
                   Provider
                   <select name="provider">
                     {providers.map((p) => (
-                      <option key={p.name}>{p.name}</option>
+                      <option key={p.name} value={p.name}>
+                        {p.display_name || p.name}
+                      </option>
                     ))}
                   </select>
                 </label>
@@ -711,13 +956,27 @@ export default function App() {
               ))}
             </>
           )}
+          {view === "Connectors" && (
+            <Connectors act={act} refresh={refresh} busy={busy} />
+          )}
+          {view === "Settings" && (
+            <Personalization value={appearance} onChange={setAppearance} />
+          )}
           {view === "Connection" && (
             <form
               className="form"
               onSubmit={(e) => {
                 e.preventDefault();
-                localStorage.setItem("omnidev-url", url.replace(/\/$/, ""));
-                sessionStorage.setItem("omnidev-token", token);
+                if (
+                  desktopConnection &&
+                  url.replace(/\/$/, "") === desktopConnection.url
+                ) {
+                  localStorage.removeItem("omnidev-url");
+                  sessionStorage.removeItem("omnidev-token");
+                } else {
+                  localStorage.setItem("omnidev-url", url.replace(/\/$/, ""));
+                  sessionStorage.setItem("omnidev-token", token);
+                }
                 act(async () => {
                   setOnline(false);
                   await refresh();
@@ -726,7 +985,8 @@ export default function App() {
             >
               <h2>Connect to your engine</h2>
               <p>
-                Web uses the current server by default. Desktop connects to
+                Web uses the current server. Packaged Windows desktop starts its
+                own local engine; other desktop builds default to
                 http://127.0.0.1:8000. Remote engines require HTTPS and an API
                 token.
               </p>
@@ -749,6 +1009,25 @@ export default function App() {
                 />
               </label>
               <button>Connect</button>
+              <label className="execution-toggle">
+                <input
+                  type="checkbox"
+                  checked={terminal}
+                  onChange={(e) => {
+                    const enabled = e.target.checked;
+                    act(async () => {
+                      await request("/workspace/execution", "PUT", { enabled });
+                      setTerminal(enabled);
+                    });
+                  }}
+                />{" "}
+                Allow terminal and external harness execution for this engine
+                session
+              </label>
+              <small>
+                Commands run with your OS account permissions. This setting
+                resets to the engine configuration when it restarts.
+              </small>
               <p className="muted">
                 The token is kept for this browser session. Provider keys stay
                 on the server.

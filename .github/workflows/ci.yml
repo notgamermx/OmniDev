@@ -35,3 +35,33 @@ jobs:
         with:
           name: omnidev-linux-desktop
           path: apps/desktop/src-tauri/target/release/bundle/deb/*.deb
+  windows-desktop:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@stable
+      - run: python -m pip install -e ".[dev]" pyinstaller
+      - run: python -m pytest backend/tests -q
+      - run: python scripts/windows_bundle.py
+      - run: python scripts/smoke_engine.py dist/windows-engine/omnidev-cli/omnidev-cli.exe
+      - name: Smoke test the installed Windows desktop
+        shell: pwsh
+        run: |
+          $Installer = Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          $Install = Start-Process -FilePath $Installer.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($Install.ExitCode -ne 0) { throw "Installer failed: $($Install.ExitCode)" }
+          python scripts/smoke_desktop_windows.py "$env:LOCALAPPDATA/OmniDev/omnidev.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop smoke failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OmniDev-Windows
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+            dist/OmniDev-Windows-CLI.zip
+            dist/*.whl

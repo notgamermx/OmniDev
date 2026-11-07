@@ -50,3 +50,6 @@ api_router.include_router(
 )
 from app.api.v1.endpoints import workbench
 api_router.include_router(workbench.router, tags=["Workbench"])
+
+from app.api.v1.endpoints import connectors
+api_router.include_router(connectors.router, tags=["Connectors"])

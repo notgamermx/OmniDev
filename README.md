@@ -6,7 +6,19 @@
 
 A local development environment with a FastAPI/SQLite engine, a React web workbench, a Tauri desktop client, and an installed `omnidev` CLI.
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:f8b76e5890f7dd6b5b5645720aaaaf6372f4032157a44fd3ebf6b8efdd520558 -->
+
+## Windows, gateways and personalization
+
+For Windows installation, the bundled desktop/CLI build and source startup, see [Windows guide](docs/WINDOWS.md). GitHub Actions produces an NSIS installer and portable CLI ZIP. Native Windows results must be checked in that workflow.
+
+The workbench now follows a minimal light layout with no profile section. Settings includes light/dark/system themes, accents, density, fonts, motion and response preferences. Connectors supports FreeLLMAPI, custom OpenAI-compatible gateways and explicitly installed command harnesses. See [connector guide](docs/CONNECTORS.md).
+
 ## Start from source
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 Requires Python 3.12 and Node.js 22 or newer.
 
@@ -25,7 +37,13 @@ Set `PROJECT_ROOT` in `.env` to the directory the engine may edit. The default i
 
 ## Connect a model
 
-Choose a provider and enter its model name in Chat or Agents. Provider keys belong in the engine's ignored `.env`; never in the browser. `omnidev providers` shows configuration status. Free tiers and quotas depend on the provider's current terms.
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:f1bf5598def1a461e7d532ba1174dacd01d8b6ca4d59b2b00d7532b86d858ac6 -->
+
+Choose a provider and enter its model name in Chat or Agents. Built-in provider keys can be set in the engine's ignored `.env`. Connector keys can also be entered in the connection form: they are sent to the engine for encrypted storage and are not persisted in browser storage or returned by list APIs.
+
+<!-- /coderabbit-ai-generated:v1 --> `omnidev providers` shows configuration status. Free tiers and quotas depend on the provider's current terms.
 
 For local Ollama, install Ollama separately, pull a model (`ollama pull llama3.1:8b`), and run its service. The default endpoint is `http://localhost:11434/v1`. For an alternate compatible server:
 
@@ -76,7 +94,13 @@ npm --prefix apps/desktop run dev
 npm --prefix apps/desktop run build
 ```
 
-Start the engine with `omnidev serve`, then open the desktop app. It uses the same engine and data as the web interface. Connection settings accept an engine URL and token. Linux packaging produces a `.deb`; change `bundle.targets` for other platforms and build on the target OS. Desktop includes the UI; the Python engine is installed separately using the wheel.
+Start the engine with `omnidev serve`, then open the desktop app. It uses the same engine and data as the web interface. Connection settings accept an engine URL and token. <!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:88be0668bc902ee91cc97b93e132d04a05b5e31f9549572bc2c3be83bd971569 -->
+
+Linux packaging produces a `.deb` with the desktop UI and uses a separately started Python engine. The Windows release build bundles the engine and CLI and starts its authenticated backend automatically; see the [Windows guide](docs/WINDOWS.md).
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 ## Remote access and shared use
 

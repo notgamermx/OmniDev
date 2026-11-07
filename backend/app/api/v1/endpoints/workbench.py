@@ -172,3 +172,26 @@ def delete_session(session_id: str):
         db.delete(session)
         db.commit()
         return {"deleted": True}
+
+
+class DirectoryCreate(BaseModel):
+    path: str = Field(min_length=1, max_length=2000)
+
+
+@router.post("/directories")
+async def create_directory(value: DirectoryCreate):
+    directory = project_path(value.path)
+    directory.mkdir(parents=True, exist_ok=True)
+    return {"path": value.path, "created": True}
+
+
+class ExecutionPermission(BaseModel):
+    enabled: bool
+
+
+@router.put("/workspace/execution")
+async def set_execution_permission(value: ExecutionPermission):
+    # The engine API is a trusted workspace; its token grants administration.
+    # Defaults remain disabled. This explicit switch lasts until engine restart.
+    settings.TERMINAL_ENABLED = value.enabled
+    return {"terminal_enabled": settings.TERMINAL_ENABLED}

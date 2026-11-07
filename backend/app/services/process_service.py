@@ -1,17 +1,12 @@
+"""Bounded command execution with process-tree cleanup on Windows and POSIX."""
+
 import asyncio
 import os
 import signal
+import shutil
 
 
-async def run_command(command: str, cwd, timeout: int):
-    process = await asyncio.create_subprocess_shell(
-        command,
-        cwd=cwd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        start_new_session=os.name != "nt",
-    )
-    # Drain output continuously while bounding retained bytes.
+async def _collect(process, timeout):
     output = bytearray()
 
     async def drain():
@@ -29,7 +24,18 @@ async def run_command(command: str, cwd, timeout: int):
             except ProcessLookupError:
                 pass
         elif process.returncode is None:
-            process.kill()
+            killer = await asyncio.create_subprocess_exec(
+                "taskkill",
+                "/PID",
+                str(process.pid),
+                "/T",
+                "/F",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await killer.wait()
+            if process.returncode is None:
+                process.kill()
         await process.wait()
         if isinstance(exc, asyncio.CancelledError):
             raise
@@ -39,3 +45,34 @@ async def run_command(command: str, cwd, timeout: int):
         "exit_code": process.returncode,
         "timed_out": timed_out,
     }
+
+
+async def run_command(command: str, cwd, timeout: int):
+    process = await asyncio.create_subprocess_shell(
+        command,
+        cwd=cwd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        start_new_session=os.name != "nt",
+    )
+    return await _collect(process, timeout)
+
+
+async def run_exec(argv: list[str], cwd, timeout: int):
+    executable = shutil.which(argv[0]) or argv[0]
+    if os.name == "nt" and executable.lower().endswith((".cmd", ".bat")):
+        # cmd.exe expands metacharacters even in some quoted arguments. Native
+        # executables and node/python entrypoints accept arbitrary prompts safely.
+        if any(any(c in arg for c in '&|<>^%!\r\n"') for arg in argv[1:]):
+            raise OSError(
+                "Use the native executable or node/python entrypoint for this prompt"
+            )
+    process = await asyncio.create_subprocess_exec(
+        executable,
+        *argv[1:],
+        cwd=cwd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        start_new_session=os.name != "nt",
+    )
+    return await _collect(process, timeout)
