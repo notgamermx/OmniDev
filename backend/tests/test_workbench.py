@@ -9,6 +9,9 @@ from app.main import app
 
 @pytest.fixture
 def client(isolated_service_db, tmp_path, monkeypatch):
+    # API/process semantics use a local test transport; isolation has dedicated Docker tests.
+    from app.services.process_service import _run_host_command
+    monkeypatch.setattr("app.services.process_service.run_command", _run_host_command)
     monkeypatch.setattr(settings, "PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(settings, "API_TOKEN", None)
     with TestClient(app) as client:
@@ -272,5 +275,6 @@ async def test_agent_provider_failover_closes_failed_provider(monkeypatch):
         agent_model=SimpleNamespace(provider="ollama", model="primary", temperature=0),
         context_manager=SimpleNamespace(get_prompt=lambda: []),
     )
+    context.token_spent = 0
     assert await AgentEngine()._plan_step(context) == "COMPLETE: recovered"
     assert closed == ["ollama", "groq"]

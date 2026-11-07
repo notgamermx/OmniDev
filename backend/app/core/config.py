@@ -18,7 +18,7 @@ ROOT_DIR = Path(
 
 class Settings(BaseSettings):
     APP_NAME: str = "Personal AI Development Environment"
-    APP_VERSION: str = "1.0.1"
+    APP_VERSION: str = "1.0.2"
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
     DATABASE_URL: str = f"sqlite:///{(ROOT_DIR / 'data' / 'app.db').as_posix()}"
@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     API_PORT: int = Field(default=8000, ge=1, le=65535)
     SECRET_KEY: str = "development-only-key"
     TERMINAL_ENABLED: bool = False
+    EXECUTION_IMAGE: str = "omnidev-executor:1"
+    COMMAND_OUTPUT_BYTES: int = Field(default=32000, ge=1024, le=1_000_000)
+    TASK_TOKEN_BUDGET: int = Field(default=100000, ge=1000, le=1_000_000)
+    TASK_TIMEOUT_SECONDS: int = Field(default=900, ge=10, le=7200)
     PROJECT_ROOT: Path = ROOT_DIR / "projects"
     API_TOKEN: SecretStr | None = None
     ALLOWED_ORIGINS: list[str] = [

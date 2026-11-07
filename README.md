@@ -1,5 +1,7 @@
 <!-- coderabbit-ai-generated:v1 -->
 
+<!-- coderabbit-ai-generated-section:v1:74e8888e34218bdd717d18aab8c6579f8c44a387de90c1d9a95a9b72342a8ea8 -->
+
 <!-- coderabbit-ai-generated-section:v1:f8325b3abfdefdbb7b6428bd43de70860519386df365425d0a7732113098b3cc -->
 
 # OmniDev
@@ -10,9 +12,13 @@
 
 A local development environment with a FastAPI/SQLite engine, a React web workbench, a Tauri desktop client, and an installed `omnidev` CLI.
 
-[![Download OmniDev for Windows](https://img.shields.io/badge/Download-OmniDev%20for%20Windows-4F46E5?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/notgamermx/OmniDev/actions/workflows/ci.yml)
+[![Download OmniDev for Windows](https://img.shields.io/badge/Download-OmniDev%20for%20Windows-4F46E5?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/notgamermx/OmniDev/releases/latest/download/OmniDev-Windows-x64.msi)
 
-**To install:** Sign in to GitHub, open the latest successful **Verify OmniDev** run for the branch you want, and download **OmniDev-Windows** under Artifacts. Extract the ZIP and run the `.msi` installer. See the [Windows guide](docs/WINDOWS.md) for details. Artifacts expire, so use a recent successful run.
+[![CI](https://github.com/notgamermx/OmniDev/actions/workflows/ci.yml/badge.svg)](https://github.com/notgamermx/OmniDev/actions/workflows/ci.yml)
+
+Download the MSI from [GitHub Releases](https://github.com/notgamermx/OmniDev/releases), install it, then search for **OmniDev** in Start. Releases also include the portable CLI ZIP, the `omnidev` Python wheel, Linux desktop package, and checksums. The download button becomes available after the first tagged release finishes CI.
+
+![OmniDev workbench in dark mode](docs/images/workbench.png)
 
 <!-- /coderabbit-ai-generated:v1 -->
 
@@ -26,7 +32,7 @@ A local development environment with a FastAPI/SQLite engine, a React web workbe
 
 <!-- coderabbit-ai-generated-section:v1:125f8e337df73207f35d58543e1e867ff2620e33f04f45db8666f286d36acc4f -->
 
-For Windows installation, the bundled desktop/CLI build and source startup, see [Windows guide](docs/WINDOWS.md). GitHub Actions produces an MSI installer with a Start menu shortcut and an optional portable CLI ZIP. Install the MSI, then search for OmniDev in Start. Native Windows results must be checked in that workflow.
+For Windows installation, the bundled desktop/CLI build and source startup, see [Windows guide](docs/WINDOWS.md). GitHub Actions produces an MSI installer with a Start menu shortcut and an optional portable CLI ZIP. Install the MSI, then search for OmniDev in Start. The v1.0.1 Windows MSI passed installation, Start menu, startup, and engine lifecycle checks in [CI run 42362034188](https://github.com/notgamermx/OmniDev/actions/runs/42362034188). Version 1.0.2 requires a new CI pass before release.
 
 <!-- /coderabbit-ai-generated:v1 -->
 
@@ -55,7 +61,7 @@ omnidev serve
 
 Open **http://127.0.0.1:8000/app/**. `serve` applies migrations before startup. The API reference is at `/docs`. Windows activation: `.venv\Scripts\Activate.ps1`.
 
-Set `PROJECT_ROOT` in `.env` to the directory the engine may edit. The default is `projects/`. File and task paths are relative to that directory. This changes the old execution behavior that accepted unrestricted caller paths.
+Set `PROJECT_ROOT` in `.env` to the directory the engine may edit. The default is `projects/`. File and task paths are relative to that directory. File tools reject paths outside this directory.
 
 ## Connect a model
 
@@ -79,7 +85,7 @@ Chat streams responses; provider adapters retry transient failures and rate limi
 
 1. Create a project and an agent in the workbench.
 2. Select the agent's allowed tools. New agents default to read tools. Select `write_file` to edit and `git_commit` to commit.
-3. Enable `TERMINAL_ENABLED=true` in `.env` and restart to allow shell commands and test execution. These commands run with the engine process's OS permissions; the engine is intended for trusted users.
+3. Enable `TERMINAL_ENABLED=true` in `.env` and restart to allow shell commands and test execution. Shell commands require Docker and run in an isolated execution container.
 4. Create a task with instructions and a verification command, for example `python -m unittest discover`.
 5. Follow persisted thoughts, tool output, and verification in Tasks. A failed verification is returned to the agent for repair; completion requires the configured command to succeed. Execution is bounded by the step limit.
 
@@ -121,7 +127,7 @@ Use `omnidev --help` and `omnidev COMMAND --help`. `OMNIDEV_URL` selects another
 
 ## Desktop
 
-The Electron prototype has been replaced with Tauri 2 as requested. Install [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) including Rust and your platform's native webview libraries.
+The desktop application uses Tauri 2. Install [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) including Rust and your platform's native webview libraries.
 
 ```bash
 npm ci --prefix apps/desktop
@@ -147,7 +153,7 @@ Before listening outside loopback, set a unique `API_TOKEN` with at least 32 cha
 
 ```bash
 python scripts/release.py
-pip install dist/personal_ai_dev-1.0.0-py3-none-any.whl
+pip install dist/omnidev-1.0.2-py3-none-any.whl
 omnidev serve
 python -m pytest backend/tests -q
 ```
@@ -161,6 +167,50 @@ The release script bundles the web build, CLI, migrations, and engine into the w
 Python and JavaScript dependencies are independent of model access. Real cloud-provider calls require your credentials; local inference requires a running model service.
 
 <!-- /coderabbit-ai-generated:v1 -->
+
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:75067436068164efc2e95c44cd909c0efaf222bd9926e7bbe4805e0539804bee -->
+
+## License
+
+OmniDev is licensed under the [MIT License](LICENSE).
+
+## Execution boundaries and verification
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+Build the execution image before enabling shell commands:
+
+```bash
+docker build -t omnidev-executor:1 -f containers/executor.Dockerfile containers
+```
+
+On Windows, run Docker Desktop with Linux containers. Docker must run on the same machine as the engine. Shell execution fails closed if Docker or the image is unavailable. The container mounts only the selected workspace, has no network or provider credentials, uses a read-only system filesystem, and has memory, CPU, process, time and output limits. Existing test inputs and Git metadata are mounted read-only. Install any required project dependencies in a custom image and set `EXECUTION_IMAGE`; package installation over the network is unavailable inside task containers. Keep secrets out of the selected workspace. Docker is a boundary, not a guarantee against container runtime vulnerabilities.
+
+Existing tests and verification configuration are hashed before execution and checked between steps and before completion. Agent file writes to those original inputs are rejected. New tests can be created, but a passing command is only as strong as the checks the user selected; review the resulting source and new tests. Agent Git tools are blocked from invoking host Git; use the isolated shell for Git inspection and commit changes yourself after review. Custom harness installation and execution are explicit trusted host operations and are not container-isolated.
+
+`COMMAND_OUTPUT_BYTES` defaults to 32,000, `TASK_TIMEOUT_SECONDS` to 900, and `TASK_TOKEN_BUDGET` to 100,000. <!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:00c094b1f2e4a1f5b6ffdc6340e0528c5b3d304ef5c3dedb6e5d56959e6627e8 -->
+
+The token budget conservatively reserves UTF-8 input bytes plus maximum response tokens before every engine planning call, including top-level failover. Internal provider/router retries may incur additional usage.
+
+<!-- /coderabbit-ai-generated:v1 --> It is not a currency budget or a provider billing guarantee. Shell commands are limited to 120 seconds and containers are removed on timeout or cancellation. Files, memory and tool output are untrusted reference material: their instructions must not override the user's task.
+
+## Publish a release
+
+After reviewing the changes and passing CI, create and push a version tag matching `pyproject.toml` and the desktop manifests:
+
+```bash
+git tag -a v1.0.2 -m "OmniDev 1.0.2"
+git push origin v1.0.2
+```
+
+The tag workflow runs backend tests, builds desktop and Python packages, exercises the installed Windows app, and publishes assets to GitHub Releases only after all jobs succeed. `omnidev-1.0.2-py3-none-any.whl` replaces the earlier `personal_ai_dev` distribution. Uninstall `personal-ai-dev` before installing `omnidev` to avoid overlapping CLI files; back up your OmniDev data first. Repository topics: `ai-agents`, `fastapi`, `tauri`, `ollama`.
 
 
 <!-- /coderabbit-ai-generated:v1 -->
