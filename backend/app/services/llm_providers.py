@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 import json
 import random
+import re
 from typing import Any, AsyncIterator
 
 import httpx
@@ -101,25 +102,100 @@ class OpenAICompatibleProvider:
             trust_env=transport is None,
         )
 
+    def _error_message(self, response: httpx.Response, body: Any = None) -> str:
+        """Expose a bounded explanation, never raw response bodies or credentials."""
+        detail = ""
+        try:
+            body = response.json() if body is None else body
+            error = body.get("error", body) if isinstance(body, dict) else {}
+            if isinstance(error, dict):
+                detail = error.get("message") or error.get("detail") or ""
+            elif isinstance(error, str):
+                detail = error
+        except (ValueError, TypeError):
+            pass
+        if not isinstance(detail, str):
+            detail = ""
+        # Providers sometimes echo the rejected request, including its prompt or key.
+        secrets = [self._client.headers.get("Authorization", "").removeprefix("Bearer ")]
+        try:
+            payload = json.loads(response.request.content)
+            secrets += [m.get("content", "") for m in payload.get("messages", [])]
+        except (ValueError, TypeError, AttributeError):
+            pass
+        for secret in sorted((x for x in secrets if isinstance(x, str) and x), key=len, reverse=True):
+            detail = detail.replace(secret, "[redacted]")
+        detail = re.sub(r"(?i)(?:bearer\s+|(?:api[_ -]?key|token)[=: ]+)[^\s,;]+", "[redacted]", detail)
+        detail = " ".join(detail.split())[:400]
+        hints = {
+            400: "Check that the selected model supports chat and your request fits its context limit.",
+            401: "Update this provider's API key in Models.",
+            402: "Check your provider's credits or choose a free model.",
+            403: "Check your key permissions and model access with the provider.",
+            404: "Refresh Models and choose an available chat model.",
+            413: "Start a new conversation or shorten the attached text.",
+            422: "Check the selected model and request options.",
+            429: "Your provider's quota or rate limit was reached. Try later or choose another model.",
+        }
+        hint = hints.get(response.status_code, "Try again or choose another provider.")
+        status = f"HTTP {response.status_code}" if response.is_error else "stream error"
+        return f"{self.definition.name} · {status}: {detail + ' ' if detail else ''}{hint}"
+
+    @staticmethod
+    def _adapt_rejected_options(response: httpx.Response, payload: dict[str, Any]) -> bool:
+        """Retry only explicit option rejections, before any answer is generated.
+
+        Keep model/messages and explicitly selected temperature values unchanged.
+        Each option can change once, independently of transient retries.
+        """
+        if response.status_code != 400:
+            return False
+        try:
+            error = response.json().get("error", {})
+            if not isinstance(error, dict):
+                return False
+            message = str(error.get("message", "")).lower()
+            param = error.get("param")
+            rejected = error.get("code") in ("unsupported_parameter", "unsupported_value") or any(
+                word in message for word in ("not supported", "unsupported", "does not support")
+            )
+            if not rejected:
+                return False
+            if (param == "temperature" or "'temperature'" in message) and payload.get("temperature") == 1.0:
+                payload.pop("temperature")
+                return True
+            if (param == "max_tokens" or "'max_tokens'" in message) and "max_completion_tokens" in message and "max_tokens" in payload:
+                payload["max_completion_tokens"] = payload.pop("max_tokens")
+                return True
+        except (ValueError, AttributeError):
+            pass
+        return False
+
     async def _post(self, path: str, payload: dict[str, Any]) -> httpx.Response:
-        for attempt in range(self.max_retries + 1):
+        attempt = 0
+        while attempt <= self.max_retries:
             try:
                 response = await self._client.post(path, json=payload)
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
                 if attempt >= self.max_retries:
-                    raise ProviderError("Provider connection failed") from exc
+                    raise ProviderError(f"Could not connect to {self.definition.name}. Check your network and provider address.") from exc
                 await asyncio.sleep(_retry_after(None, attempt))
+                attempt += 1
                 continue
             if response.status_code == 429 and attempt < self.max_retries:
                 await asyncio.sleep(_retry_after(response.headers.get("Retry-After"), attempt))
+                attempt += 1
                 continue
             if response.status_code >= 500 and attempt < self.max_retries:
                 await asyncio.sleep(_retry_after(response.headers.get("Retry-After"), attempt))
+                attempt += 1
+                continue
+            if self._adapt_rejected_options(response, payload):
                 continue
             if response.status_code == 429:
-                raise ProviderRateLimitError("Provider rate limit exceeded")
+                raise ProviderRateLimitError(self._error_message(response))
             if response.is_error:
-                raise ProviderError(f"Provider returned HTTP {response.status_code}")
+                raise ProviderError(self._error_message(response))
             return response
         raise ProviderError("Provider request failed")
 
@@ -135,7 +211,13 @@ class OpenAICompatibleProvider:
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
         response = await self._post("chat/completions", payload)
-        return response.json()
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise ProviderError(f"{self.definition.name} returned invalid JSON. Try another model.") from exc
+        if not isinstance(data, dict) or not isinstance(data.get("choices"), list) or not data["choices"]:
+            raise ProviderError(f"{self.definition.name} returned an invalid completion. Check the model supports chat.")
+        return data
 
     async def chat_completion_stream(
         self,
@@ -148,20 +230,27 @@ class OpenAICompatibleProvider:
         payload = {"model": model, "messages": messages, "temperature": temperature, "stream": True, **kwargs}
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
-        for attempt in range(self.max_retries + 1):
+        attempt = 0
+        while attempt <= self.max_retries:
             emitted = False
             try:
                 async with self._client.stream("POST", "chat/completions", json=payload) as response:
                     if response.status_code == 429 and attempt < self.max_retries:
                         await asyncio.sleep(_retry_after(response.headers.get("Retry-After"), attempt))
+                        attempt += 1
                         continue
                     if response.status_code >= 500 and attempt < self.max_retries:
                         await asyncio.sleep(_retry_after(response.headers.get("Retry-After"), attempt))
+                        attempt += 1
+                        continue
+                    if response.is_error:
+                        await response.aread()
+                    if self._adapt_rejected_options(response, payload):
                         continue
                     if response.status_code == 429:
-                        raise ProviderRateLimitError("Provider rate limit exceeded")
+                        raise ProviderRateLimitError(self._error_message(response))
                     if response.is_error:
-                        raise ProviderError(f"Provider returned HTTP {response.status_code}")
+                        raise ProviderError(self._error_message(response))
                     async for line in response.aiter_lines():
                         if not line.startswith("data:"):
                             continue
@@ -172,13 +261,16 @@ class OpenAICompatibleProvider:
                             chunk = json.loads(data)
                         except json.JSONDecodeError as exc:
                             raise ProviderError("Provider returned an invalid stream event") from exc
+                        if not isinstance(chunk, dict) or "error" in chunk:
+                            raise ProviderError(self._error_message(response, chunk))
                         emitted = True
                         yield chunk
                 return
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
                 if emitted or attempt >= self.max_retries:
-                    raise ProviderError("Provider stream connection failed") from exc
+                    raise ProviderError(f"{self.definition.name} connection was interrupted. Try again or choose another provider.") from exc
                 await asyncio.sleep(_retry_after(None, attempt))
+                attempt += 1
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -226,10 +318,12 @@ class CohereProvider(OpenAICompatibleProvider):
                         if response.status_code >= 500 and attempt < self.max_retries:
                             await asyncio.sleep(_retry_after(response.headers.get("Retry-After"), attempt))
                             continue
-                        if response.status_code == 429:
-                            raise ProviderRateLimitError("Provider rate limit exceeded")
                         if response.is_error:
-                            raise ProviderError(f"Provider returned HTTP {response.status_code}")
+                            await response.aread()
+                        if response.status_code == 429:
+                            raise ProviderRateLimitError(self._error_message(response))
+                        if response.is_error:
+                            raise ProviderError(self._error_message(response))
                         async for line in response.aiter_lines():
                             if not line.startswith("data:"):
                                 continue
@@ -248,7 +342,7 @@ class CohereProvider(OpenAICompatibleProvider):
                     return
                 except (httpx.TimeoutException, httpx.NetworkError) as exc:
                     if emitted or attempt >= self.max_retries:
-                        raise ProviderError("Provider stream connection failed") from exc
+                        raise ProviderError(f"{self.definition.name} connection was interrupted. Try again or choose another provider.") from exc
                     await asyncio.sleep(_retry_after(None, attempt))
         return events()
 

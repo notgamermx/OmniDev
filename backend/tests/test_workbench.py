@@ -9,6 +9,9 @@ from app.main import app
 
 @pytest.fixture
 def client(isolated_service_db, tmp_path, monkeypatch):
+    # API/process semantics use a local test transport; isolation has dedicated Docker tests.
+    from app.services.process_service import _run_host_command
+    monkeypatch.setattr("app.services.process_service.run_command", _run_host_command)
     monkeypatch.setattr(settings, "PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(settings, "API_TOKEN", None)
     with TestClient(app) as client:
@@ -30,6 +33,15 @@ def test_files_are_scoped_and_sessions_persist(client, tmp_path):
         client.get("/api/v1/files", params={"path": "src"}).json()["items"][0]["path"]
         == "src/example.py"
     )
+    # Explorer navigates using the returned paths, including nested directories.
+    assert client.post("/api/v1/directories", json={"path": "src/nested"}).status_code == 200
+    assert client.put("/api/v1/file", json={"path": "src/nested/file.txt", "content": "nested"}).status_code == 200
+    entries = client.get("/api/v1/files", params={"path": "src"}).json()["items"]
+    folder = next(item for item in entries if item["isDirectory"])
+    assert folder["path"] == "src/nested"
+    nested = client.get("/api/v1/files", params={"path": folder["path"]}).json()["items"][0]
+    assert nested["path"] == "src/nested/file.txt"
+    assert client.get("/api/v1/file", params={"path": nested["path"]}).json()["content"] == "nested"
     assert client.get("/api/v1/file", params={"path": "../outside"}).status_code == 403
     assert (
         client.put(
@@ -263,5 +275,6 @@ async def test_agent_provider_failover_closes_failed_provider(monkeypatch):
         agent_model=SimpleNamespace(provider="ollama", model="primary", temperature=0),
         context_manager=SimpleNamespace(get_prompt=lambda: []),
     )
+    context.token_spent = 0
     assert await AgentEngine()._plan_step(context) == "COMPLETE: recovered"
     assert closed == ["ollama", "groq"]

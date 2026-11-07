@@ -23,8 +23,7 @@ venv/
 *.sqlite3
 
 # Logs
-logs/*
-!logs/.gitkeep
+logs/
 
 # Python testing
 .pytest_cache/

@@ -1,6 +1,6 @@
 {
   "name": "omnidev-desktop",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "private": true,
   "scripts": {
     "dev": "tauri dev",

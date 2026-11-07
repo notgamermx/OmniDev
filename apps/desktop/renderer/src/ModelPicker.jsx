@@ -12,6 +12,7 @@ export default function ModelPicker({
   const [models, setModels] = useState([]),
     [notice, setNotice] = useState("");
   const [generation, setGeneration] = useState(0);
+  const [editing, setEditing] = useState(false);
   useEffect(() => {
     let active = true;
     setModels([]);
@@ -34,8 +35,9 @@ export default function ModelPicker({
       active = false;
     };
   }, [provider, generation]);
+  const selectedProvider = providers.find((p) => p.name === provider);
   const known = models.some((m) => m.id === model);
-  const manual = model !== "" && !known;
+  const manual = editing || (model !== "" && !known);
   return (
     <div className="model-picker">
       <label>
@@ -46,6 +48,7 @@ export default function ModelPicker({
           value={provider}
           disabled={busy}
           onChange={(e) => {
+            setEditing(false);
             onProvider(e.target.value);
             onModel(e.target.value === "builtin" ? "auto" : "");
           }}
@@ -65,13 +68,10 @@ export default function ModelPicker({
           name={form && known ? "model" : undefined}
           value={known ? model : manual ? "__manual" : ""}
           disabled={busy}
-          onChange={(e) =>
-            onModel(
-              e.target.value === "__manual"
-                ? "custom-model-id"
-                : e.target.value,
-            )
-          }
+          onChange={(e) => {
+            setEditing(e.target.value === "__manual");
+            onModel(e.target.value === "__manual" ? "" : e.target.value);
+          }}
           required={form}
         >
           <option value="">Choose a model</option>
@@ -89,6 +89,7 @@ export default function ModelPicker({
           Model ID
           <input
             aria-label="Model ID"
+            placeholder="Exact model ID from your provider"
             name={form ? "model" : undefined}
             value={model}
             onChange={(e) => onModel(e.target.value)}
@@ -103,6 +104,9 @@ export default function ModelPicker({
       >
         ↻ Models
       </button>
+      <div className={`model-status ${selectedProvider?.configured ? "ready" : ""}`}>
+        {selectedProvider?.configured ? "Provider ready" : "Set up this provider in Models"}
+      </div>
       {notice && <small className="model-notice">{notice}</small>}
     </div>
   );

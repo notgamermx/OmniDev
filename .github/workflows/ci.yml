@@ -1,0 +1,107 @@
+name: Verify OmniDev
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/desktop/renderer/package-lock.json
+      - run: python -m pip install -e '.[dev]'
+      - run: docker build -t omnidev-executor:1 -f containers/executor.Dockerfile containers
+      - run: python -m pytest backend/tests -q
+        env:
+          RUN_DOCKER_TESTS: "1"
+      - run: python scripts/release.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omnidev-python
+          path: dist/*.whl
+  desktop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - run: npm ci --prefix apps/desktop && npm ci --prefix apps/desktop/renderer
+      - run: npm --prefix apps/desktop run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omnidev-linux-desktop
+          path: apps/desktop/src-tauri/target/release/bundle/deb/*.deb
+  windows-desktop:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@stable
+      - run: python -m pip install -e ".[dev]" pyinstaller
+      - run: python -m pytest backend/tests -q
+      - run: python scripts/windows_bundle.py
+      - run: python scripts/smoke_engine.py dist/windows-engine/omnidev-cli/omnidev-cli.exe
+      - name: Smoke test the installed Windows desktop
+        shell: pwsh
+        run: |
+          $Installer = Get-ChildItem apps/desktop/src-tauri/target/release/bundle/msi/*.msi | Select-Object -First 1
+          $InstallDir = "$env:LOCALAPPDATA\OmniDev"
+          $Install = Start-Process msiexec.exe -ArgumentList @('/i', "`"$($Installer.FullName)`"", '/qn', '/norestart', "INSTALLDIR=`"$InstallDir`"") -Wait -PassThru
+          if ($Install.ExitCode -notin @(0, 3010)) { throw "Installer failed: $($Install.ExitCode)" }
+          $Programs = @([Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('CommonPrograms'))
+          $Shortcuts = $Programs | ForEach-Object { Get-ChildItem $_ -Filter '*OmniDev*.lnk' -Recurse -ErrorAction SilentlyContinue }
+          if (!$Shortcuts) { throw 'OmniDev Start menu shortcut is missing' }
+          python scripts/smoke_desktop_windows.py "$env:LOCALAPPDATA/OmniDev/omnidev.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop smoke failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OmniDev-Windows
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/msi/*.msi
+            dist/OmniDev-Windows-CLI.zip
+            dist/*.whl
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [application, desktop, windows-desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate release version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python -c 'import os,tomllib,json; v=tomllib.load(open("pyproject.toml","rb"))["project"]["version"]; assert os.environ["RELEASE_TAG"] == "v"+v; assert json.load(open("apps/desktop/src-tauri/tauri.conf.json"))["version"] == v'
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+      - name: Publish verified packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir release
+          mapfile -t installers < <(find packages/OmniDev-Windows -name '*.msi')
+          test "${#installers[@]}" -eq 1
+          cp "${installers[0]}" release/OmniDev-Windows-x64.msi
+          find packages/OmniDev-Windows -name 'OmniDev-Windows-CLI.zip' -exec cp {} release/ \;
+          cp packages/omnidev-python/*.whl release/
+          cp packages/omnidev-linux-desktop/*.deb release/
+          test -f release/OmniDev-Windows-CLI.zip
+          sha256sum release/* > release/SHA256SUMS
+          gh release create "$RELEASE_TAG" release/* --verify-tag --title "OmniDev $RELEASE_TAG" --generate-notes

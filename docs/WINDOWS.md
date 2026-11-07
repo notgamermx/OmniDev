@@ -1,12 +1,14 @@
 <!-- coderabbit-ai-generated:v1 -->
 
+<!-- coderabbit-ai-generated-section:v1:9f718bffc434a40f5e5f293be2929e55252bc8e7b677041053647b2e34484820 -->
+
 <!-- coderabbit-ai-generated-section:v1:a486ed3755e1b6cb91444c272e45ef96cb51b95960b042652e42a4604c622bc6 -->
 
 # OmniDev on Windows
 
 ## Install a packaged build
 
-Windows packages are produced by the **Verify OmniDev → windows-desktop** GitHub Actions job. After pushing this source to your repository, open **Actions → Verify OmniDev → Run workflow**, then download the **OmniDev-Windows** artifact from the successful run. Extract that artifact first.
+Download `OmniDev-Windows-x64.msi` from [GitHub Releases](https://github.com/notgamermx/OmniDev/releases). Version-tag builds publish the MSI, CLI ZIP and Python wheel after all CI jobs pass. If there is no release yet, the repository owner must publish a version tag first. Development artifacts remain available through successful Actions runs but require GitHub sign-in and expire. Shell execution additionally requires Docker Desktop running Linux containers and the execution image described in the README.
 
 <!-- coderabbit-ai-generated:v1 -->
 

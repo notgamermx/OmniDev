@@ -1,0 +1,4 @@
+FROM python:3.12-slim
+RUN apt-get update && apt-get install -y --no-install-recommends git nodejs npm && rm -rf /var/lib/apt/lists/*
+WORKDIR /workspace
+ENV PYTHONDONTWRITEBYTECODE=1

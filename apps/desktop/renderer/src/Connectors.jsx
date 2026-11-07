@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { request } from "./services/api";
+import { downloadText } from "./services/download";
 
 export default function Connectors({ act, refresh, busy }) {
   const [data, setData] = useState({ providers: [], harnesses: [] });
@@ -261,12 +262,14 @@ export default function Connectors({ act, refresh, busy }) {
       {!!models.length && (
         <article>
           <h3>Available models</h3>
+          <button disabled={busy} onClick={() => act(() => downloadText("omnidev-connector-models.txt", models.join("\n")))}>↓ Download model list</button>
           <pre>{models.join("\n")}</pre>
         </article>
       )}
       {output && (
         <article>
           <h3>Harness result</h3>
+          <button disabled={busy} onClick={() => act(() => downloadText("omnidev-harness-result.json", output, "application/json"))}>↓ Download result</button>
           <pre>{output}</pre>
         </article>
       )}

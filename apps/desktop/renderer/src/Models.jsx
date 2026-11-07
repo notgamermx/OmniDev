@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { request } from "./services/api";
+import { downloadText } from "./services/download";
 export default function Models({ act, refresh, busy }) {
   const [providers, setProviders] = useState([]),
     [selected, setSelected] = useState("groq");
@@ -38,6 +39,10 @@ export default function Models({ act, refresh, busy }) {
         fallback order. Cloud providers still require your own keys and their
         quotas apply. Free-tier availability depends on your account.
       </p>
+      <div className="toolbar">
+        <button type="button" disabled={busy || !models.length} onClick={() => act(() => downloadText(`omnidev-${selected}-catalog.json`, JSON.stringify(models, null, 2), "application/json"))}>↓ Download model catalog</button>
+        <button type="button" disabled={busy || !routes.length} onClick={() => act(() => downloadText("omnidev-model-pool.json", JSON.stringify({ routes }, null, 2), "application/json"))}>↓ Download router configuration</button>
+      </div>
       <div className="split connector-forms">
         <div>
           <h3>1. Set up a provider</h3>

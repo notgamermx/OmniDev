@@ -1,11 +1,13 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "personal-ai-dev"
-version = "1.0.0"
-description = "Personal AI Development Environment"
+name = "omnidev"
+version = "1.0.2"
+description = "OmniDev AI development workbench and CLI"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.115",

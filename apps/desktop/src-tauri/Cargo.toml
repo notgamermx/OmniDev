@@ -1,6 +1,6 @@
 [package]
 name = "omnidev"
-version = "1.0.0"
+version = "1.0.2"
 description = "OmniDev development environment"
 authors = ["OmniDev"]
 edition = "2021"
@@ -12,6 +12,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 tauri-plugin-single-instance = "2"
+tauri-plugin-dialog = "2"
 
 [target.'cfg(windows)'.dependencies]
 uuid = { version = "1", features = ["v4"] }
