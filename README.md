@@ -6,6 +6,11 @@
 
 A local development environment with a FastAPI/SQLite engine, a React web workbench, a Tauri desktop client, and an installed `omnidev` CLI.
 
+# Download
+[![Download for Windows](https://img.shields.io/badge/Download-OmniDev%20for%20Windows-4F46E5?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/notgamermx/OmniDev/actions/workflows/ci.yml)
+
+To install: sign in to GitHub, open the latest successful build, and download **OmniDev-Windows** under Artifacts. Extract the ZIP and run the `.msi` installer.
+
 <!-- coderabbit-ai-generated:v1 -->
 
 <!-- coderabbit-ai-generated-section:v1:f8b76e5890f7dd6b5b5645720aaaaf6372f4032157a44fd3ebf6b8efdd520558 -->
