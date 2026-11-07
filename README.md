@@ -22,6 +22,8 @@ Download the MSI from [GitHub Releases](https://github.com/notgamermx/OmniDev/re
 
 <!-- /coderabbit-ai-generated:v1 -->
 
+[Download Artifact](https://github.com/notgamermx/OmniDev/actions/runs/42362034188/artifacts/13570233253)
+
 <!-- coderabbit-ai-generated:v1 -->
 
 <!-- coderabbit-ai-generated-section:v1:f8b76e5890f7dd6b5b5645720aaaaf6372f4032157a44fd3ebf6b8efdd520558 -->
