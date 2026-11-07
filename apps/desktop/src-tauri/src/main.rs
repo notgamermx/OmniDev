@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use std::sync::Mutex;
 use tauri::Manager;
+use tauri_plugin_dialog::DialogExt;
 
 #[derive(Clone, serde::Serialize)]
 struct Connection { url: String, token: String }
@@ -16,6 +17,24 @@ fn desktop_connection(engine: tauri::State<Engine>) -> Result<Option<Connection>
     match &engine.error {
         Some(error) => Err(error.clone()),
         None => Ok(engine.connection.clone()),
+    }
+}
+
+// The native dialog chooses the destination; renderer input cannot supply a path.
+#[tauri::command]
+async fn export_text(app: tauri::AppHandle, name: String, content: String) -> Result<bool, String> {
+    if content.len() > 20 * 1024 * 1024 {
+        return Err("Export is larger than 20 MB".to_string());
+    }
+    let name = name.rsplit(['/', '\\']).next().unwrap_or("omnidev.txt");
+    let path = app.dialog().file().set_file_name(name).blocking_save_file();
+    match path {
+        Some(path) => {
+            let path = path.into_path().map_err(|_| "Choose a local file".to_string())?;
+            std::fs::write(path, content).map_err(|_| "Could not save the export. Check folder permissions.".to_string())?;
+            Ok(true)
+        }
+        None => Ok(false),
     }
 }
 
@@ -66,6 +85,7 @@ fn stop_engine(engine: &Engine) {
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("main") { let _ = window.set_focus(); }
         }))
@@ -77,7 +97,7 @@ fn main() {
             app.manage(engine);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![desktop_connection, engine_ready])
+        .invoke_handler(tauri::generate_handler![desktop_connection, engine_ready, export_text])
         .build(tauri::generate_context!()).expect("Unable to start OmniDev")
         .run(|app, event| { if let tauri::RunEvent::Exit = event { stop_engine(&app.state::<Engine>()); } });
 }

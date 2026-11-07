@@ -150,3 +150,116 @@ async def test_cohere_stream_normalizes_content_delta():
     finally:
         await provider.close()
     assert chunks[0]["choices"][0]["delta"]["content"] == "hello"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", [False, True])
+async def test_explicit_unsupported_options_recover_without_changing_messages(stream):
+    payloads = []
+
+    def handler(request):
+        payload = json.loads(request.content)
+        payloads.append(payload)
+        if "temperature" in payload:
+            return httpx.Response(400, json={"error": {"param": "temperature", "code": "unsupported_value", "message": "'temperature' is not supported"}})
+        if "max_tokens" in payload:
+            return httpx.Response(400, json={"error": {"param": "max_tokens", "code": "unsupported_parameter", "message": "Use max_completion_tokens instead of 'max_tokens'"}})
+        if stream:
+            return httpx.Response(200, text='data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n')
+        return httpx.Response(200, json=_completion())
+
+    provider = OpenAICompatibleProvider(PROVIDER_BY_ID["openai"], "secret-key", transport=httpx.MockTransport(handler), max_retries=0)
+    messages = [{"role": "user", "content": "hello"}]
+    try:
+        if stream:
+            result = [chunk async for chunk in provider.chat_completion_stream("reasoner", messages, max_tokens=100)]
+            assert result[0]["choices"][0]["delta"]["content"] == "ok"
+        else:
+            assert (await provider.chat_completion("reasoner", messages, max_tokens=100))["id"] == "test-response"
+    finally:
+        await provider.close()
+    assert len(payloads) == 3
+    assert payloads[-1]["max_completion_tokens"] == 100
+    assert all(p["messages"] == messages and p["model"] == "reasoner" for p in payloads)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("provider_type,definition", [(OpenAICompatibleProvider, PROVIDER_BY_ID["groq"]), (CohereProvider, PROVIDER_BY_ID["cohere"])])
+async def test_error_details_are_actionable_and_redact_request_secrets(stream, provider_type, definition):
+    from app.services.llm_providers import ProviderError
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(400, json={"error": {"message": "Model unavailable. secret-key private prompt"}})
+
+    provider = provider_type(definition, "secret-key", transport=httpx.MockTransport(handler), max_retries=0)
+    try:
+        with pytest.raises(ProviderError) as error:
+            if stream:
+                _ = [chunk async for chunk in provider.chat_completion_stream("missing", [{"role": "user", "content": "private prompt"}])]
+            else:
+                await provider.chat_completion("missing", [{"role": "user", "content": "private prompt"}])
+    finally:
+        await provider.close()
+    assert len(calls) == 1
+    assert definition.name in str(error.value)
+    assert "Model unavailable" in str(error.value)
+    assert "HTTP 400" in str(error.value)
+    assert "secret-key" not in str(error.value)
+    assert "private prompt" not in str(error.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [401, 403, 404, 429, 500])
+async def test_error_status_guidance_and_no_raw_body_leak(status):
+    from app.services.llm_providers import ProviderError
+    provider = OpenAICompatibleProvider(PROVIDER_BY_ID["groq"], "secret", transport=httpx.MockTransport(lambda request: httpx.Response(status, text="<html>private gateway dump</html>")), max_retries=0)
+    try:
+        with pytest.raises(ProviderError) as error:
+            await provider.chat_completion("model", [{"role": "user", "content": "hi"}])
+    finally:
+        await provider.close()
+    assert f"HTTP {status}" in str(error.value)
+    assert "private gateway dump" not in str(error.value)
+
+
+@pytest.mark.asyncio
+async def test_explicit_temperature_is_preserved_on_rejection():
+    from app.services.llm_providers import ProviderError
+    seen = []
+    def handler(request):
+        seen.append(json.loads(request.content))
+        return httpx.Response(400, json={"error": {"param": "temperature", "code": "unsupported_value"}})
+    provider = OpenAICompatibleProvider(PROVIDER_BY_ID["openai"], "key", transport=httpx.MockTransport(handler), max_retries=0)
+    try:
+        with pytest.raises(ProviderError):
+            await provider.chat_completion("model", [], temperature=0.4)
+    finally:
+        await provider.close()
+    assert len(seen) == 1
+    assert seen[0]["temperature"] == 0.4
+
+
+@pytest.mark.asyncio
+async def test_stream_error_event_is_not_silently_ignored():
+    from app.services.llm_providers import ProviderError
+    provider = OpenAICompatibleProvider(PROVIDER_BY_ID["groq"], "key", transport=httpx.MockTransport(lambda request: httpx.Response(200, text='data: {"error":{"message":"Context limit exceeded"}}\n\n')), max_retries=0)
+    try:
+        with pytest.raises(ProviderError, match="Context limit exceeded"):
+            _ = [chunk async for chunk in provider.chat_completion_stream("model", [])]
+    finally:
+        await provider.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", ['not json', '{"choices":[]}', '[]'])
+async def test_invalid_completion_is_rejected(body):
+    from app.services.llm_providers import ProviderError
+    provider = OpenAICompatibleProvider(PROVIDER_BY_ID["groq"], "key", transport=httpx.MockTransport(lambda request: httpx.Response(200, text=body)))
+    try:
+        with pytest.raises(ProviderError):
+            await provider.chat_completion("model", [])
+    finally:
+        await provider.close()

@@ -3,6 +3,8 @@ import { request, streamChat, connection } from "./services/api";
 import Connectors from "./Connectors";
 import Models from "./Models";
 import ModelPicker from "./ModelPicker";
+import ResponseContent from "./ResponseContent";
+import { downloadText } from "./services/download";
 import { desktopConnection } from "./services/desktop";
 import Personalization, { loadAppearance } from "./Personalization";
 const icons = {
@@ -151,7 +153,8 @@ export default function App() {
   }
   async function send(e) {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() || busy) return;
+    if (!model.trim()) { setError("Choose a model before sending a message."); return; }
     const text =
       input +
       (attachment
@@ -161,7 +164,7 @@ export default function App() {
     setInput("");
     await act(async () => {
       let id = session || (await newSession());
-      const history = [...messages, { role: "user", content: text }];
+      const history = [...messages.filter((m) => m.content?.trim()), { role: "user", content: text }];
       setMessages([...history, { role: "assistant", content: "" }]);
       await request(`/sessions/${id}`, "PUT", { messages: history });
       let response = "";
@@ -189,8 +192,9 @@ export default function App() {
             setMessages([...history, { role: "assistant", content: response }]);
           },
         );
+        if (!response.trim()) throw new Error("The model returned an empty reply. Choose another chat model or shorten your conversation.");
       } finally {
-        const updated = [...history, { role: "assistant", content: response }];
+        const updated = response ? [...history, { role: "assistant", content: response }] : history;
         setMessages(updated);
         await request(`/sessions/${id}`, "PUT", { messages: updated });
       }
@@ -365,7 +369,8 @@ export default function App() {
         </header>
         {error && (
           <div role="alert" className="error">
-            {error}
+            <span>{error}</span>
+            {view === "Chat" && <button onClick={() => { setView("Models"); setError(""); }}>Model settings</button>}
             <button onClick={() => setError("")}>Dismiss</button>
           </div>
         )}
@@ -422,6 +427,7 @@ export default function App() {
                 >
                   + New chat
                 </button>
+                {messages.length > 0 && button("↓ Download chat", () => downloadText("omnidev-conversation.md", messages.map((m) => `## ${m.role}\n\n${m.content}`).join("\n\n"), "text/markdown;charset=utf-8"))}
                 {session &&
                   button("Delete conversation", async () => {
                     await request(`/sessions/${session}`, "DELETE");
@@ -450,10 +456,12 @@ export default function App() {
                 )}
                 {messages.map((m, i) => (
                   <article className={"message " + m.role} key={i}>
-                    <small>{m.role}</small>
-                    <pre>
-                      {m.content || (busy ? "Thinking…" : "No response")}
-                    </pre>
+                    <div className="message-heading">
+                      <small>{m.role === "assistant" ? "✦ OmniDev" : "You"}</small>
+                      <button type="button" className="download-action" disabled={busy || !m.content}
+                        onClick={() => act(() => downloadText(`omnidev-${m.role}-${i + 1}.md`, m.content, "text/markdown;charset=utf-8"))}>↓ Download</button>
+                    </div>
+                    <ResponseContent text={m.content || (busy ? "Thinking…" : "No response")} act={act} busy={busy} />
                   </article>
                 ))}
               </div>
@@ -707,6 +715,7 @@ export default function App() {
                         await request(`/tasks/${task.task.id}`, "DELETE");
                         setTask(await request(`/tasks/${task.task.id}`));
                       })}
+                    {button("↓ Download task", () => downloadText("omnidev-task.json", JSON.stringify(task, null, 2), "application/json"))}
                     <pre>{task.task.result || task.task.error}</pre>
                     {task.steps.map((s, i) => (
                       <article key={i}>
@@ -769,6 +778,7 @@ export default function App() {
                     {file || "Select a file"}
                     {dirty ? " •" : ""}
                   </strong>
+                  <button type="button" disabled={!file || busy} onClick={() => act(() => downloadText(file, content))}>↓ Download file</button>
                   {button("Save", async () => {
                     if (!file) return;
                     await request("/file", "PUT", { path: file, content });
@@ -830,6 +840,7 @@ export default function App() {
                   disabled={!terminal || busy}
                 />
                 <button disabled={!terminal || busy}>Run</button>
+                <button type="button" disabled={!output || busy} onClick={() => act(() => downloadText("omnidev-terminal.txt", output))}>↓ Download output</button>
                 {button("Clear", async () => setOutput(""))}
               </form>
               <pre className="terminal">
@@ -889,6 +900,7 @@ export default function App() {
                   await loadMemory();
                 })}
               </div>
+              {button("↓ Download memory", () => downloadText(`omnidev-${scope}-memory.json`, JSON.stringify(scope === "preference" ? preferences : memories, null, 2), "application/json"))}
               {(scope === "preference" ? preferences : memories).map((m) => (
                 <article key={m.key}>
                   <h3>{m.key}</h3>

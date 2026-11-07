@@ -18,7 +18,7 @@ ROOT_DIR = Path(
 
 class Settings(BaseSettings):
     APP_NAME: str = "Personal AI Development Environment"
-    APP_VERSION: str = "1.0.0"
+    APP_VERSION: str = "1.0.1"
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
     DATABASE_URL: str = f"sqlite:///{(ROOT_DIR / 'data' / 'app.db').as_posix()}"

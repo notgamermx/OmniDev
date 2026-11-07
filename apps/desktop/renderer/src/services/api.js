@@ -65,7 +65,7 @@ export async function streamChat(body, onText) {
         const data = line.slice(5).trim();
         if (data === "[DONE]") return;
         const event = JSON.parse(data);
-        if (event.error) throw new Error(event.error.detail);
+        if (event.error) throw new Error(event.error.detail || event.error.message || "Provider rejected the stream");
         onText(event.choices?.[0]?.delta?.content || "");
       }
     }

@@ -73,7 +73,20 @@ Chat streams responses; provider adapters retry transient failures and rate limi
 4. Create a task with instructions and a verification command, for example `python -m unittest discover`.
 5. Follow persisted thoughts, tool output, and verification in Tasks. A failed verification is returned to the agent for repair; completion requires the configured command to succeed. Execution is bounded by the step limit.
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:b6c8df92e688cbad10e696628d9201a575e1adf7f94262426c933f61d9921914 -->
+
 Files contains a UTF-8 editor with explicit Save. Terminal runs bounded commands and reports their exit status. It is a command console; shell state does not persist between commands. Conversations are saved on the engine and can be opened by desktop, web, or CLI. Session memory uses the selected conversation ID. Project memories are supplied to agents working on that project. Preferences and project understanding have REST endpoints.
+
+### Downloads and provider troubleshooting
+
+Use **Download** on a reply, **Download code** on a fenced code block, or **Download chat** to save the conversation as Markdown. Files downloads the editor's current contents, including unsaved changes. Tasks and Memory export JSON; Terminal exports its output as text. Models exports the discovered catalog and router configuration as JSON, without API keys. The desktop app opens a native Save dialog; the web dashboard uses your browser's downloads. Model catalog downloads contain metadata; local model weights are still installed through Ollama.
+
+Provider failures show the provider name, HTTP status, a bounded explanation with configured credentials and echoed messages redacted, and a suggested next step. Refresh the catalog if a model is unavailable; check credentials for 401/403 and quotas for 429. For HTTP 400, check that the selected model supports chat and the conversation fits its context limit. OmniDev retries an explicitly rejected default temperature without that optional field, or replaces explicitly rejected `max_tokens` with `max_completion_tokens` when the provider asks for it. It preserves messages, model selection, and nondefault temperatures. Failed empty replies are omitted from saved conversation history.
+
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 ## CLI
 
