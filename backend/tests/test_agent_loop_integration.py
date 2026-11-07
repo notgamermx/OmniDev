@@ -31,7 +31,7 @@ def make_task(task_id=1, max_steps=4):
         title="Test task",
         description="A test task",
         plan=["Think through the task", "Finish it"],
-        task_config={"constraints": ["Stay in project root"]},
+        project_id=None, task_config={"constraints": ["Stay in project root"]},
         max_steps=max_steps,
         step_count=0,
         result=None,

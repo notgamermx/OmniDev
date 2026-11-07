@@ -38,15 +38,28 @@ class TaskService:
         workspace_id: Optional[int] = None,
         max_steps: int = 25,
         goals: Optional[List[str]] = None,
-        constraints: Optional[List[str]] = None
+        constraints: Optional[List[str]] = None,
+        verification_command: Optional[str] = None,
     ) -> Task:
         """Create a new task."""
+
         def op(db):
             # Verify agent exists
-            agent = db.execute(select(Agent).where(Agent.id == agent_id)).scalar_one_or_none()
+            agent = db.execute(
+                select(Agent).where(Agent.id == agent_id)
+            ).scalar_one_or_none()
             if not agent:
                 raise ValueError(f"Agent {agent_id} not found")
 
+            if verification_command:
+                from app.core.config import settings
+
+                if not settings.TERMINAL_ENABLED or "shell" not in (
+                    agent.tool_names or []
+                ):
+                    raise ValueError(
+                        "Verification requires TERMINAL_ENABLED and an agent with the shell tool"
+                    )
             task = Task(
                 agent_id=agent_id,
                 project_id=project_id,
@@ -59,7 +72,10 @@ class TaskService:
                 max_steps=max_steps,
                 created_at=datetime.now(timezone.utc).isoformat(),
                 updated_at=datetime.now(timezone.utc).isoformat(),
-                task_config={"constraints": constraints or []}
+                task_config={
+                    "constraints": constraints or [],
+                    "verification_command": verification_command,
+                },
             )
             db.add(task)
             db.commit()
@@ -70,27 +86,46 @@ class TaskService:
         return self._with_db(op)
 
     async def start_task(
-        self,
-        task_id: int,
-        project_root: str = ".",
-        stream: bool = False
+        self, task_id: int, project_root: str = ".", stream: bool = False
     ) -> Any:
         """Start executing a task."""
+
         def check_task(db):
-            task = db.execute(select(Task).where(Task.id == task_id)).scalar_one_or_none()
+            task = db.execute(
+                select(Task).where(Task.id == task_id)
+            ).scalar_one_or_none()
             if not task:
                 raise ValueError(f"Task {task_id} not found")
             if task.status != TaskStatus.PENDING.value:
-                raise ValueError(f"Task {task_id} cannot start from status '{task.status}'")
+                raise ValueError(
+                    f"Task {task_id} cannot start from status '{task.status}'"
+                )
             return task
 
         self._with_db(check_task)
-        return await self.agent_engine.execute_task(task_id, project_root, stream)
+        try:
+            return await self.agent_engine.execute_task(task_id, project_root, stream)
+        except Exception:
+
+            def fail_pending(db):
+                task = db.get(Task, task_id)
+                if task is not None and task.status in {"pending", "running"}:
+                    task.status = "failed"
+                    task.error = "Task could not start; check the agent and provider configuration"
+                    task.updated_at = datetime.now(timezone.utc).isoformat()
+                    db.commit()
+
+            self._with_db(fail_pending)
+            raise
 
     async def get_task(self, task_id: int) -> Optional[Task]:
         """Get a task by ID."""
+
         def op(db):
-            return db.execute(select(Task).where(Task.id == task_id)).scalar_one_or_none()
+            return db.execute(
+                select(Task).where(Task.id == task_id)
+            ).scalar_one_or_none()
+
         return self._with_db(op)
 
     async def list_tasks(
@@ -98,9 +133,10 @@ class TaskService:
         agent_id: Optional[int] = None,
         project_id: Optional[int] = None,
         status: Optional[str] = None,
-        limit: int = 100
+        limit: int = 100,
     ) -> List[Task]:
         """List tasks with optional filtering."""
+
         def op(db):
             query = select(Task)
 
@@ -122,6 +158,7 @@ class TaskService:
 
     async def get_task_steps(self, task_id: int) -> List[TaskStep]:
         """Get all steps for a task."""
+
         def op(db):
             result = db.execute(
                 select(TaskStep)
@@ -134,8 +171,11 @@ class TaskService:
 
     async def get_task_with_results(self, task_id: int) -> Dict[str, Any]:
         """Get a task with its steps and results."""
+
         def op(db):
-            task = db.execute(select(Task).where(Task.id == task_id)).scalar_one_or_none()
+            task = db.execute(
+                select(Task).where(Task.id == task_id)
+            ).scalar_one_or_none()
             if not task:
                 return {"error": f"Task {task_id} not found"}
 
@@ -159,7 +199,7 @@ class TaskService:
                     "error": task.error,
                     "max_steps": task.max_steps,
                     "created_at": task.created_at,
-                    "updated_at": task.updated_at
+                    "updated_at": task.updated_at,
                 },
                 "steps": [
                     {
@@ -169,11 +209,11 @@ class TaskService:
                         "tool_name": s.tool_name,
                         "tool_result": s.tool_result,
                         "error": s.error,
-                        "created_at": s.created_at
+                        "created_at": s.created_at,
                     }
                     for s in steps
                 ],
-                "step_count": len(steps)
+                "step_count": len(steps),
             }
 
         return self._with_db(op)
@@ -184,11 +224,14 @@ class TaskService:
         title: Optional[str] = None,
         description: Optional[str] = None,
         priority: Optional[str] = None,
-        max_steps: Optional[int] = None
+        max_steps: Optional[int] = None,
     ) -> Optional[Task]:
         """Update task properties."""
+
         def op(db):
-            task = db.execute(select(Task).where(Task.id == task_id)).scalar_one_or_none()
+            task = db.execute(
+                select(Task).where(Task.id == task_id)
+            ).scalar_one_or_none()
             if not task:
                 return None
 
@@ -210,11 +253,14 @@ class TaskService:
 
     async def delete_task(self, task_id: int) -> bool:
         """Delete a task and its steps."""
+
         def op(db):
             # Delete steps first
             db.execute(delete(TaskStep).where(TaskStep.task_id == task_id))
 
-            task = db.execute(select(Task).where(Task.id == task_id)).scalar_one_or_none()
+            task = db.execute(
+                select(Task).where(Task.id == task_id)
+            ).scalar_one_or_none()
             if not task:
                 return False
 

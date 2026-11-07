@@ -20,12 +20,18 @@ def get_task_service() -> TaskService:
 
 
 # Helper function for streaming
-async def stream_task_execution(task_id: int, project_root: str) -> AsyncIterator[Dict[str, Any]]:
+async def stream_task_execution(
+    task_id: int, project_root: str
+) -> AsyncIterator[Dict[str, Any]]:
     """Generator for streaming task execution updates."""
     service = get_task_service()
 
     try:
-        yield {"type": "status", "message": "Starting task execution", "task_id": task_id}
+        yield {
+            "type": "status",
+            "message": "Starting task execution",
+            "task_id": task_id,
+        }
 
         # Get initial task info
         task = await service.get_task(task_id)
@@ -33,14 +39,17 @@ async def stream_task_execution(task_id: int, project_root: str) -> AsyncIterato
             yield {"type": "error", "message": f"Task {task_id} not found"}
             return
 
-        yield {"type": "task_started", "task": {
-            "id": task.id,
-            "title": task.title,
-            "agent_id": task.agent_id
-        }}
+        yield {
+            "type": "task_started",
+            "task": {"id": task.id, "title": task.title, "agent_id": task.agent_id},
+        }
 
         # Execute with streaming
-        task_result = await service.start_task(task_id, project_root, stream=True)
+        from app.api.v1.endpoints.workbench import project_path
+
+        task_result = await service.start_task(
+            task_id, str(project_path(project_root)), stream=True
+        )
 
         async for event in task_result:
             yield event
@@ -57,9 +66,10 @@ async def create_task(
     description: Optional[str] = Body(None, description="Task description"),
     project_id: Optional[int] = Body(None, description="Project ID (optional)"),
     workspace_id: Optional[int] = Body(None, description="Workspace ID (optional)"),
-    max_steps: int = Body(25, description="Maximum execution steps"),
+    max_steps: int = Body(25, ge=1, le=200, description="Maximum execution steps"),
     goals: Optional[List[str]] = Body(None, description="Task goals/planner steps"),
-    constraints: Optional[List[str]] = Body(None, description="Task constraints")
+    constraints: Optional[List[str]] = Body(None, description="Task constraints"),
+    verification_command: Optional[str] = Body(None, max_length=10000),
 ):
     """Create a new task for an agent."""
     service = get_task_service()
@@ -73,7 +83,8 @@ async def create_task(
             workspace_id=workspace_id,
             max_steps=max_steps,
             goals=goals,
-            constraints=constraints
+            constraints=constraints,
+            verification_command=verification_command,
         )
         return {
             "id": task.id,
@@ -85,7 +96,7 @@ async def create_task(
             "metadata": task.task_config,
             "max_steps": task.max_steps,
             "created_at": task.created_at,
-            "updated_at": task.updated_at
+            "updated_at": task.updated_at,
         }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -93,13 +104,18 @@ async def create_task(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/{task_id}/execute", response_model=dict, summary="Execute a task synchronously")
+@router.post(
+    "/{task_id}/execute", response_model=dict, summary="Execute a task synchronously"
+)
 async def execute_task_sync(
     task_id: int = Path(..., description="Task ID"),
-    project_root: str = Body(".", description="Project root directory")
+    project_root: str = Body(".", embed=True, description="Project root directory"),
 ):
     """Execute a task synchronously and wait for completion."""
     service = get_task_service()
+    from app.api.v1.endpoints.workbench import project_path
+
+    project_root = str(project_path(project_root))
 
     try:
         task = await service.start_task(task_id, project_root, stream=False)
@@ -114,13 +130,15 @@ async def execute_task_sync(
                 {
                     "step_index": s.step_index,
                     "kind": s.kind,
-                    "content": s.content[:500] + "..." if len(s.content) > 500 else s.content,
+                    "content": s.content[:500] + "..."
+                    if len(s.content) > 500
+                    else s.content,
                     "tool_name": s.tool_name,
-                    "created_at": s.created_at
+                    "created_at": s.created_at,
                 }
                 for s in steps
             ],
-            "step_count": len(steps)
+            "step_count": len(steps),
         }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -129,10 +147,14 @@ async def execute_task_sync(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{task_id}/execute/stream", response_class=StreamingResponse, summary="Execute a task with streaming")
+@router.post(
+    "/{task_id}/execute/stream",
+    response_class=StreamingResponse,
+    summary="Execute a task with streaming",
+)
 async def execute_task_stream(
     task_id: int = Path(..., description="Task ID"),
-    project_root: str = Body(".", description="Project root directory"),
+    project_root: str = Body(".", embed=True, description="Project root directory"),
 ):
     """Execute a task with streaming updates."""
     service = get_task_service()
@@ -140,7 +162,11 @@ async def execute_task_stream(
     try:
         task = await service.get_task(task_id)
         if not task:
-            return Response(content=json.dumps({"error": "Task not found"}), media_type="application/json", status_code=404)
+            return Response(
+                content=json.dumps({"error": "Task not found"}),
+                media_type="application/json",
+                status_code=404,
+            )
 
         generator = stream_task_execution(task_id, project_root)
 
@@ -151,10 +177,14 @@ async def execute_task_stream(
         return StreamingResponse(
             event_stream(),
             media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
     except Exception as e:
-        return Response(content=json.dumps({"error": str(e)}), media_type="application/json", status_code=500)
+        return Response(
+            content=json.dumps({"error": str(e)}),
+            media_type="application/json",
+            status_code=500,
+        )
 
 
 @router.get("/", response_model=dict, summary="List tasks")
@@ -162,15 +192,12 @@ async def list_tasks(
     agent_id: Optional[int] = None,
     project_id: Optional[int] = None,
     status: Optional[str] = None,
-    limit: int = 100
+    limit: int = 100,
 ):
     """List tasks with optional filtering."""
     service = get_task_service()
     tasks = await service.list_tasks(
-        agent_id=agent_id,
-        project_id=project_id,
-        status=status,
-        limit=limit
+        agent_id=agent_id, project_id=project_id, status=status, limit=limit
     )
 
     return {
@@ -182,15 +209,17 @@ async def list_tasks(
                 "description": t.description,
                 "status": t.status,
                 "priority": t.priority,
-                "result": t.result[:100] + "..." if t.result and len(t.result) > 100 else t.result,
+                "result": t.result[:100] + "..."
+                if t.result and len(t.result) > 100
+                else t.result,
                 "error": t.error,
                 "step_count": t.step_count,
                 "created_at": t.created_at,
-                "updated_at": t.updated_at
+                "updated_at": t.updated_at,
             }
             for t in tasks
         ],
-        "total": len(tasks)
+        "total": len(tasks),
     }
 
 
@@ -223,11 +252,11 @@ async def get_task_steps(task_id: int = Path(..., description="Task ID")):
                 "tool_args": s.tool_args,
                 "tool_result": s.tool_result,
                 "error": s.error,
-                "created_at": s.created_at
+                "created_at": s.created_at,
             }
             for s in steps
         ],
-        "count": len(steps)
+        "count": len(steps),
     }
 
 
@@ -238,8 +267,14 @@ async def cancel_task(task_id: int = Path(..., description="Task ID")):
     success = await service.cancel_task(task_id)
 
     if not success:
-        raise HTTPException(status_code=404, detail=f"Task {task_id} not found or already completed/cancelled")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Task {task_id} not found or already completed/cancelled",
+        )
 
+    worker = workers.get(task_id)
+    if worker is not None:
+        worker.cancel()
     return {"cancelled": True, "task_id": task_id}
 
 
@@ -274,3 +309,33 @@ class TaskResults:
             summary += "no errors"
 
         return summary
+
+
+# Retain workers until completion and cancel them on application shutdown.
+import asyncio
+
+workers: dict[int, asyncio.Task] = {}
+
+
+@router.post("/{task_id}/run", summary="Start a task in the background")
+async def run_task(task_id: int, project_root: str = Body(".", embed=True)):
+    from app.api.v1.endpoints.workbench import project_path
+
+    service = get_task_service()
+    task = await service.get_task(task_id)
+    if not task:
+        raise HTTPException(404, "Task not found")
+    if task.status != "pending" or task_id in workers:
+        raise HTTPException(409, "Task has already started")
+    path = str(project_path(project_root))
+
+    async def run():
+        try:
+            await service.start_task(task_id, path)
+        except Exception:
+            logger.exception("Background task %s failed", task_id)
+        finally:
+            workers.pop(task_id, None)
+
+    workers[task_id] = asyncio.create_task(run())
+    return {"task_id": task_id, "status": "queued"}

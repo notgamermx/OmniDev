@@ -261,4 +261,7 @@ def make_provider(provider_id: str, config: Settings = settings, *, transport: h
     api_key = credential.get_secret_value().strip() or None if credential else None
     account_id = getattr(config, definition.account_id_env) if definition.account_id_env else None
     provider_type = CohereProvider if definition.api_style == "native" else OpenAICompatibleProvider
+    if provider_id == "openai" or provider_id in config.PROVIDER_URLS:
+        from dataclasses import replace
+        definition = replace(definition, base_url=config.PROVIDER_URLS.get(provider_id, config.OPENAI_BASE_URL))
     return provider_type(definition, api_key, account_id=account_id, transport=transport)

@@ -4,10 +4,14 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Body, HTTPException, Path, BackgroundTasks
 
-from app.services.agent_service import AgentService, get_agent_service as _get_agent_service
+from app.services.agent_service import (
+    AgentService,
+    get_agent_service as _get_agent_service,
+)
 from app.services.llm_providers import PROVIDER_BY_ID
 
 router = APIRouter(tags=["Agents"])
+
 
 # Default dependency
 def get_agent_service() -> AgentService:
@@ -32,7 +36,7 @@ async def list_agents(enabled_only: bool = True):
                 "enabled": a.enabled,
                 "tool_count": len(a.tool_names),
                 "created_at": a.created_at,
-                "updated_at": a.updated_at
+                "updated_at": a.updated_at,
             }
             for a in agents
         ]
@@ -46,10 +50,12 @@ async def create_agent(
     provider: str = Body("ollama", description="LLM provider ID"),
     model: str = Body(..., description="Model name"),
     system_prompt: Optional[str] = Body(None, description="Custom system prompt"),
-    tool_names: Optional[List[str]] = Body(None, description="List of tool names to enable"),
-    max_steps: int = Body(25, description="Maximum execution steps"),
-    temperature: float = Body(0.0, description="LLM temperature"),
-    enabled: bool = Body(True, description="Whether agent is enabled")
+    tool_names: Optional[List[str]] = Body(
+        None, description="List of tool names to enable"
+    ),
+    max_steps: int = Body(25, ge=1, le=200, description="Maximum execution steps"),
+    temperature: float = Body(0.0, ge=0, le=2, description="LLM temperature"),
+    enabled: bool = Body(True, description="Whether agent is enabled"),
 ):
     """Create a new AI agent definition."""
     # Validate provider
@@ -59,12 +65,17 @@ async def create_agent(
     # Validate tools if provided
     if tool_names:
         from app.services.tool_registry import get_builtin_tool_registry
+
         registry = get_builtin_tool_registry()
         for tool_name in tool_names:
             if not registry.get_tool(tool_name):
-                raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
+                raise HTTPException(
+                    status_code=404, detail=f"Tool '{tool_name}' not found"
+                )
             if not registry.is_enabled(tool_name):
-                raise HTTPException(status_code=400, detail=f"Tool '{tool_name}' is disabled")
+                raise HTTPException(
+                    status_code=400, detail=f"Tool '{tool_name}' is disabled"
+                )
 
     service = get_agent_service()
 
@@ -78,7 +89,7 @@ async def create_agent(
             tool_names=tool_names,
             max_steps=max_steps,
             temperature=temperature,
-            enabled=enabled
+            enabled=enabled,
         )
         return {
             "id": agent.id,
@@ -91,7 +102,7 @@ async def create_agent(
             "enabled": agent.enabled,
             "tool_names": agent.tool_names,
             "created_at": agent.created_at,
-            "updated_at": agent.updated_at
+            "updated_at": agent.updated_at,
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -121,7 +132,7 @@ async def get_agent(agent_id: int = Path(..., description="Agent ID")):
         "enabled": agent.enabled,
         "tools": tools,
         "created_at": agent.created_at,
-        "updated_at": agent.updated_at
+        "updated_at": agent.updated_at,
     }
 
 
@@ -131,11 +142,7 @@ async def list_agent_tools(agent_id: int = Path(..., description="Agent ID")):
     service = get_agent_service()
     tools = await service.list_agent_tools(agent_id)
 
-    return {
-        "agent_id": agent_id,
-        "tools": tools,
-        "count": len(tools)
-    }
+    return {"agent_id": agent_id, "tools": tools, "count": len(tools)}
 
 
 @router.put("/{agent_id}", response_model=dict, summary="Update an agent")
@@ -147,7 +154,7 @@ async def update_agent(
     system_prompt: Optional[str] = Body(None, description="New system prompt"),
     max_steps: Optional[int] = Body(None, description="New max steps"),
     temperature: Optional[float] = Body(None, description="New temperature"),
-    enabled: Optional[bool] = Body(None, description="Enable/disable agent")
+    enabled: Optional[bool] = Body(None, description="Enable/disable agent"),
 ):
     """Update an agent's configuration."""
     service = get_agent_service()
@@ -159,7 +166,7 @@ async def update_agent(
         system_prompt=system_prompt,
         max_steps=max_steps,
         temperature=temperature,
-        enabled=enabled
+        enabled=enabled,
     )
 
     if not agent:
@@ -172,14 +179,18 @@ async def update_agent(
         "provider": agent.provider,
         "model": agent.model,
         "enabled": agent.enabled,
-        "updated_at": agent.updated_at
+        "updated_at": agent.updated_at,
     }
 
 
-@router.post("/{agent_id}/tools/{tool_name}", response_model=dict, summary="Assign a tool to an agent")
+@router.post(
+    "/{agent_id}/tools/{tool_name}",
+    response_model=dict,
+    summary="Assign a tool to an agent",
+)
 async def assign_tool(
     agent_id: int = Path(..., description="Agent ID"),
-    tool_name: str = Path(..., description="Tool name")
+    tool_name: str = Path(..., description="Tool name"),
 ):
     """Assign a tool to an agent."""
     service = get_agent_service()
@@ -193,14 +204,18 @@ async def assign_tool(
         "agent_id": agent_id,
         "tool_name": tool_name,
         "success": True,
-        "tools": agent.tool_names
+        "tools": agent.tool_names,
     }
 
 
-@router.delete("/{agent_id}/tools/{tool_name}", response_model=dict, summary="Remove a tool from an agent")
+@router.delete(
+    "/{agent_id}/tools/{tool_name}",
+    response_model=dict,
+    summary="Remove a tool from an agent",
+)
 async def remove_tool(
     agent_id: int = Path(..., description="Agent ID"),
-    tool_name: str = Path(..., description="Tool name")
+    tool_name: str = Path(..., description="Tool name"),
 ):
     """Remove a tool from an agent."""
     service = get_agent_service()
@@ -214,7 +229,7 @@ async def remove_tool(
         "agent_id": agent_id,
         "tool_name": tool_name,
         "success": True,
-        "tools": agent.tool_names
+        "tools": agent.tool_names,
     }
 
 

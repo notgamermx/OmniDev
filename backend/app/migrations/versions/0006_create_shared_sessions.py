@@ -5,7 +5,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "0006_shared_sessions"
-down_revision = "0005_create_memory_tables"
+down_revision = "0005_memory_tables"
 branch_labels = None
 depends_on = None
 

@@ -48,3 +48,5 @@ api_router.include_router(
     prefix="/dashboard",
     tags=["Dashboard"],
 )
+from app.api.v1.endpoints import workbench
+api_router.include_router(workbench.router, tags=["Workbench"])

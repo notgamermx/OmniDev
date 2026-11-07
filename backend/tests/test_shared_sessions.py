@@ -15,7 +15,7 @@ class TestSharedSessionService:
     """Tests for shared session management."""
 
     @pytest.fixture
-    def service(self):
+    def service(self, isolated_service_db):
         return SharedSessionService()
 
     @pytest.mark.asyncio
@@ -86,17 +86,18 @@ class TestSharedSessionService:
         user = unique_user()
         session = await service.create_shared_session(owner_user_id=user)
 
-        # Share with user
-        await service.share_session(session.session_id, [unique_user()])
+        # Share with the user who will join.
+        guest = unique_user()
+        await service.share_session(session.session_id, [guest])
 
         membership = await service.join_session(
             session.session_id,
-            unique_user(),
+            guest,
             role="viewer"
         )
 
         assert membership.session_id == session.session_id
-        assert membership.user_id == unique_user()
+        assert membership.user_id == guest
         assert membership.role == "viewer"
 
     @pytest.mark.asyncio

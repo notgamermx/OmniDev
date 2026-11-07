@@ -5,7 +5,7 @@ import sys
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-BACKEND_DIR = Path(__file__).resolve().parents[1]
+BACKEND_DIR = Path(__file__).resolve().parents[2]
 ROOT_DIR = BACKEND_DIR.parent
 sys.path.insert(0, str(BACKEND_DIR))
 
@@ -28,6 +28,8 @@ if settings.DATABASE_URL.startswith("sqlite:///"):
     sqlite_path.parent.mkdir(parents=True, exist_ok=True)
 
 # add model's MetaData for 'autogenerate support'
+import app.models.conversation
+
 target_metadata = Base.metadata
 
 

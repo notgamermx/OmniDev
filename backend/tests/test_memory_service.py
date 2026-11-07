@@ -23,7 +23,7 @@ class TestSessionMemory:
     """Tests for session-level memory."""
 
     @pytest.fixture
-    def service(self):
+    def service(self, isolated_service_db):
         return MemoryService()
 
     @pytest.mark.asyncio
@@ -75,7 +75,7 @@ class TestProjectMemory:
     """Tests for project-level memory."""
 
     @pytest.fixture
-    def service(self):
+    def service(self, isolated_service_db):
         return MemoryService()
 
     @pytest.mark.asyncio
@@ -108,7 +108,7 @@ class TestLongTermPreference:
     """Tests for long-term preferences."""
 
     @pytest.fixture
-    def service(self):
+    def service(self, isolated_service_db):
         return MemoryService()
 
     @pytest.mark.asyncio
@@ -162,7 +162,7 @@ class TestContextRetrieval:
     """Tests for context retrieval history."""
 
     @pytest.fixture
-    def service(self):
+    def service(self, isolated_service_db):
         return MemoryService()
 
     @pytest.mark.asyncio
@@ -197,7 +197,7 @@ class TestProjectUnderstanding:
     """Tests for project understanding."""
 
     @pytest.fixture
-    def service(self):
+    def service(self, isolated_service_db):
         return MemoryService()
 
     @pytest.mark.asyncio
@@ -244,7 +244,7 @@ class TestRecallProjectContext:
     """Tests for AI-powered context recall."""
 
     @pytest.fixture
-    def service(self):
+    def service(self, isolated_service_db):
         return MemoryService()
 
     @pytest.mark.asyncio

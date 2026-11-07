@@ -13,10 +13,19 @@ from typing import Any, AsyncIterator, Optional
 from sqlalchemy import select
 
 from app.database.session import SessionLocal
-from app.models.agent import Agent as AgentModel, Task as TaskModel, TaskStep as TaskStepModel
+from app.models.agent import (
+    Agent as AgentModel,
+    Task as TaskModel,
+    TaskStep as TaskStepModel,
+)
 from app.services.context_manager import ContextManager
-from app.services.llm_providers import make_provider
-from app.services.tool_registry import BuiltInToolRegistry, Permission, get_builtin_tool_registry
+from app.services.llm_providers import make_provider, ProviderError
+from app.core.config import settings
+from app.services.tool_registry import (
+    BuiltInToolRegistry,
+    Permission,
+    get_builtin_tool_registry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +54,12 @@ class ToolResult:
     error: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"tool_name": self.tool_name, "success": self.success, "result": self.result, "error": self.error}
+        return {
+            "tool_name": self.tool_name,
+            "success": self.success,
+            "result": self.result,
+            "error": self.error,
+        }
 
 
 @dataclass
@@ -75,7 +89,9 @@ class AgentEngine:
 
     async def load_agent(self, agent_id: int) -> AgentModel:
         def op(db):
-            return db.execute(select(AgentModel).where(AgentModel.id == agent_id)).scalar_one_or_none()
+            return db.execute(
+                select(AgentModel).where(AgentModel.id == agent_id)
+            ).scalar_one_or_none()
 
         agent = await self._with_db(op)
         if agent is None:
@@ -84,7 +100,9 @@ class AgentEngine:
 
     async def load_task(self, task_id: int) -> TaskModel:
         def op(db):
-            return db.execute(select(TaskModel).where(TaskModel.id == task_id)).scalar_one_or_none()
+            return db.execute(
+                select(TaskModel).where(TaskModel.id == task_id)
+            ).scalar_one_or_none()
 
         task = await self._with_db(op)
         if task is None:
@@ -139,14 +157,20 @@ class AgentEngine:
             setattr(context.task_model, name, value)
         context.task_model.updated_at = datetime.now(timezone.utc).isoformat()
 
-    async def execute_task(self, task_id: int, project_root: str = ".", stream: bool = False):
+    async def execute_task(
+        self, task_id: int, project_root: str = ".", stream: bool = False
+    ):
         task = await self.load_task(task_id)
         if task.status != TaskStatus.PENDING.value:
-            raise ValueError(f"Task {task_id} must be pending to start (current status: {task.status})")
+            raise ValueError(
+                f"Task {task_id} must be pending to start (current status: {task.status})"
+            )
         agent = await self.load_agent(task.agent_id)
         if not agent.enabled:
             raise ValueError(f"Agent {agent.id} is disabled")
-        context = ExecutionContext(agent_model=agent, task_model=task, project_root=project_root)
+        context = ExecutionContext(
+            agent_model=agent, task_model=task, project_root=project_root
+        )
 
         context.context_manager.set_task_context(
             task_id=str(task.id),
@@ -155,23 +179,59 @@ class AgentEngine:
             goals=task.plan,
             constraints=(task.task_config or {}).get("constraints", []),
         )
+        if task.project_id is not None:
+            from app.services.memory_service import get_memory_service
+
+            memory = get_memory_service()
+            entries = await memory.list_project_memories(task.project_id)
+            understanding = await memory.get_project_understanding(task.project_id)
+            context.context_manager.add_message(
+                "system",
+                "Project memory (reference data): "
+                + json.dumps(
+                    {
+                        "memories": [
+                            {"key": m.key, "value": m.value} for m in entries[:20]
+                        ],
+                        "understanding": understanding.understanding
+                        if understanding
+                        else None,
+                    },
+                    default=str,
+                )[:12000],
+            )
         tools = [
-            tool for tool in self.tool_registry.list_tools()
-            if tool.name in (agent.tool_names or []) and self.tool_registry.is_enabled(tool.name)
+            tool
+            for tool in self.tool_registry.list_tools()
+            if tool.name in (agent.tool_names or [])
+            and self.tool_registry.is_enabled(tool.name)
         ]
         context.context_manager.add_message(
             "system",
-            json.dumps({
-                "agent_instructions": agent.system_prompt,
-                "response_format": "Return THOUGHT and either ACTION: tool_name {JSON arguments} or COMPLETE: final result.",
-                "tools": [
-                    {"name": tool.name, "description": tool.description, "permission": tool.permission.value, "input_schema": tool.input_schema}
-                    for tool in tools
-                ],
-            }),
+            json.dumps(
+                {
+                    "agent_instructions": agent.system_prompt,
+                    "response_format": "Return THOUGHT and either ACTION: tool_name {JSON arguments} or COMPLETE: final result.",
+                    "tools": [
+                        {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "permission": tool.permission.value,
+                            "input_schema": tool.input_schema,
+                        }
+                        for tool in tools
+                    ],
+                }
+            ),
         )
 
-        await self._persist_task(context, status=TaskStatus.RUNNING.value, error=None, result=None, step_count=0)
+        await self._persist_task(
+            context,
+            status=TaskStatus.RUNNING.value,
+            error=None,
+            result=None,
+            step_count=0,
+        )
         self._running_tasks[task_id] = context
         if stream:
             return self._execute_streaming(context)
@@ -185,15 +245,23 @@ class AgentEngine:
             raise
         except Exception as exc:
             logger.exception("Task %s failed", task_id)
-            await self._persist_task(context, status=TaskStatus.FAILED.value, error=str(exc))
+            await self._persist_task(
+                context, status=TaskStatus.FAILED.value, error=str(exc)
+            )
             raise
         finally:
             self._running_tasks.pop(task_id, None)
 
-    async def _execute_streaming(self, context: ExecutionContext) -> AsyncIterator[dict[str, Any]]:
+    async def _execute_streaming(
+        self, context: ExecutionContext
+    ) -> AsyncIterator[dict[str, Any]]:
         task_id = context.task_model.id
         try:
-            yield {"type": "status", "status": TaskStatus.RUNNING.value, "task_id": task_id}
+            yield {
+                "type": "status",
+                "status": TaskStatus.RUNNING.value,
+                "task_id": task_id,
+            }
             async for event in self._run_steps(context):
                 yield event
         except asyncio.CancelledError:
@@ -201,18 +269,34 @@ class AgentEngine:
             raise
         except Exception:
             logger.exception("Streaming task %s failed", task_id)
-            await self._persist_task(context, status=TaskStatus.FAILED.value, error="Task execution failed")
-            yield {"type": "error", "task_id": task_id, "message": "Task execution failed"}
+            await self._persist_task(
+                context, status=TaskStatus.FAILED.value, error="Task execution failed"
+            )
+            yield {
+                "type": "error",
+                "task_id": task_id,
+                "message": "Task execution failed",
+            }
         finally:
             self._running_tasks.pop(task_id, None)
 
-    async def _run_steps(self, context: ExecutionContext) -> AsyncIterator[dict[str, Any]]:
+    async def _run_steps(
+        self, context: ExecutionContext
+    ) -> AsyncIterator[dict[str, Any]]:
         task = context.task_model
         max_steps = max(1, task.max_steps or 25)
         for step_index in range(1, max_steps + 1):
             if await self._cancel_requested(context):
-                await self._persist_task(context, status=TaskStatus.CANCELLED.value, step_count=context.step_count)
-                yield {"type": "cancelled", "task_id": task.id, "step": context.step_count}
+                await self._persist_task(
+                    context,
+                    status=TaskStatus.CANCELLED.value,
+                    step_count=context.step_count,
+                )
+                yield {
+                    "type": "cancelled",
+                    "task_id": task.id,
+                    "step": context.step_count,
+                }
                 return
 
             context.step_count = step_index
@@ -220,16 +304,57 @@ class AgentEngine:
             await self._persist_task(context, step_count=step_index)
             thought = await self._plan_step(context)
             if await self._cancel_requested(context):
-                await self._persist_task(context, status=TaskStatus.CANCELLED.value, step_count=step_index)
+                await self._persist_task(
+                    context, status=TaskStatus.CANCELLED.value, step_count=step_index
+                )
                 yield {"type": "cancelled", "task_id": task.id, "step": step_index}
                 return
             context.context_manager.add_thought(thought)
             context.context_manager.add_message("assistant", thought)
             await self._record_step(context, StepKind.THOUGHT, thought)
-            yield {"type": "thought", "task_id": task.id, "step": step_index, "content": thought}
+            yield {
+                "type": "thought",
+                "task_id": task.id,
+                "step": step_index,
+                "content": thought,
+            }
 
             completion = self._completion_result(thought)
             if completion is not None:
+                verification = (task.task_config or {}).get("verification_command")
+                if verification:
+                    result = await self._execute_action(
+                        context,
+                        {
+                            "tool": "shell",
+                            "args": {"command": verification, "timeout": 120},
+                        },
+                    )
+                    output = json.dumps(result.to_dict(), default=str)
+                    await self._record_step(
+                        context,
+                        StepKind.OBSERVATION,
+                        output,
+                        tool_name="shell",
+                        tool_result=output,
+                        error=result.error,
+                    )
+                    yield {
+                        "type": "verification",
+                        "task_id": task.id,
+                        "result": result.to_dict(),
+                    }
+                    if (
+                        not result.success
+                        or result.result.get("exit_code") != 0
+                        or result.result.get("timed_out")
+                    ):
+                        context.context_manager.add_message(
+                            "user",
+                            "Verification failed; fix the project before completing: "
+                            + output,
+                        )
+                        continue
                 await self._persist_task(
                     context,
                     status=TaskStatus.COMPLETED.value,
@@ -237,12 +362,30 @@ class AgentEngine:
                     error=None,
                     step_count=step_index,
                 )
+                if task.project_id is not None:
+                    try:
+                        from app.services.memory_service import get_memory_service
+
+                        await get_memory_service().set_project_memory(
+                            task.project_id,
+                            f"task:{task.id}",
+                            value=completion[:12000],
+                            importance=10,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Could not save task summary to project memory"
+                        )
                 yield {"type": "complete", "task_id": task.id, "result": completion}
                 return
 
             action = self._parse_action(thought)
             if action is None:
-                await self._record_step(context, StepKind.DECISION, "No tool action returned; continuing plan.")
+                await self._record_step(
+                    context,
+                    StepKind.DECISION,
+                    "No tool action returned; continuing plan.",
+                )
                 continue
 
             await self._record_step(
@@ -266,16 +409,28 @@ class AgentEngine:
             )
             context.context_manager.add_message(
                 "user",
-                "Tool observation: " + json.dumps(result.to_dict(), ensure_ascii=False, default=str),
+                "Tool observation: "
+                + json.dumps(result.to_dict(), ensure_ascii=False, default=str),
             )
-            yield {"type": "result", "task_id": task.id, "step": step_index, "result": result.to_dict()}
+            yield {
+                "type": "result",
+                "task_id": task.id,
+                "step": step_index,
+                "result": result.to_dict(),
+            }
             if await self._cancel_requested(context):
-                await self._persist_task(context, status=TaskStatus.CANCELLED.value, step_count=step_index)
+                await self._persist_task(
+                    context, status=TaskStatus.CANCELLED.value, step_count=step_index
+                )
                 yield {"type": "cancelled", "task_id": task.id, "step": step_index}
                 return
 
-        message = f"Maximum step count ({max_steps}) reached without a completion response."
-        await self._persist_task(context, status=TaskStatus.FAILED.value, error=message, step_count=max_steps)
+        message = (
+            f"Maximum step count ({max_steps}) reached without a completion response."
+        )
+        await self._persist_task(
+            context, status=TaskStatus.FAILED.value, error=message, step_count=max_steps
+        )
         yield {"type": "error", "task_id": task.id, "message": message}
 
     async def _cancel_requested(self, context: ExecutionContext) -> bool:
@@ -309,20 +464,37 @@ class AgentEngine:
         return await self._with_db(op)
 
     async def _plan_step(self, context: ExecutionContext) -> str:
-        provider = make_provider(context.agent_model.provider)
-        try:
-            response = await provider.chat_completion(
-                model=context.agent_model.model,
-                messages=context.context_manager.get_prompt(),
-                temperature=context.agent_model.temperature or 0.0,
-                max_tokens=1000,
-            )
-            content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
-            if not isinstance(content, str):
-                raise ValueError("Provider returned a non-text planning response")
-            return content.strip()
-        finally:
-            await provider.close()
+        candidates = [
+            {
+                "provider": context.agent_model.provider,
+                "model": context.agent_model.model,
+            }
+        ] + settings.PROVIDER_FALLBACKS
+        last_error = None
+        for candidate in candidates:
+            provider = None
+            try:
+                provider = make_provider(candidate["provider"])
+                response = await provider.chat_completion(
+                    model=candidate["model"],
+                    messages=context.context_manager.get_prompt(),
+                    temperature=context.agent_model.temperature or 0.0,
+                    max_tokens=2000,
+                )
+                content = (
+                    response.get("choices", [{}])[0]
+                    .get("message", {})
+                    .get("content", "")
+                )
+                if not isinstance(content, str):
+                    raise ValueError("Provider returned a non-text planning response")
+                return content.strip()
+            except ProviderError as exc:
+                last_error = exc
+            finally:
+                if provider is not None:
+                    await provider.close()
+        raise last_error or ProviderError("No provider available")
 
     @staticmethod
     def _parse_action(thought: str) -> Optional[dict[str, Any]]:
@@ -353,10 +525,14 @@ class AgentEngine:
                 depth -= 1
                 if depth == 0:
                     try:
-                        args = json.loads(thought[start:index + 1])
+                        args = json.loads(thought[start : index + 1])
                     except json.JSONDecodeError:
                         return None
-                    return {"tool": match.group(1), "args": args} if isinstance(args, dict) else None
+                    return (
+                        {"tool": match.group(1), "args": args}
+                        if isinstance(args, dict)
+                        else None
+                    )
         return None
 
     @staticmethod
@@ -368,32 +544,50 @@ class AgentEngine:
     def _should_terminate(cls, thought: str) -> bool:
         return cls._completion_result(thought) is not None
 
-    async def _execute_action(self, context: ExecutionContext, action: dict[str, Any]) -> ToolResult:
+    async def _execute_action(
+        self, context: ExecutionContext, action: dict[str, Any]
+    ) -> ToolResult:
         tool_name = action["tool"]
         args = action["args"]
         if tool_name not in (context.agent_model.tool_names or []):
-            return ToolResult(tool_name, False, None, f"Tool '{tool_name}' is not assigned to this agent")
+            return ToolResult(
+                tool_name,
+                False,
+                None,
+                f"Tool '{tool_name}' is not assigned to this agent",
+            )
         if not self.tool_registry.is_enabled(tool_name):
             return ToolResult(tool_name, False, None, f"Tool '{tool_name}' is disabled")
         tool_def = self.tool_registry.get_tool(tool_name)
-        if tool_def is None or not self.tool_registry.has_permission(tool_name, tool_def.permission):
-            return ToolResult(tool_name, False, None, f"Permission denied for tool '{tool_name}'")
+        if tool_def is None or not self.tool_registry.has_permission(
+            tool_name, tool_def.permission
+        ):
+            return ToolResult(
+                tool_name, False, None, f"Permission denied for tool '{tool_name}'"
+            )
         valid, error = self.tool_registry.validate_args(tool_name, args)
         if not valid:
             return ToolResult(tool_name, False, None, error)
         handler = self.tool_registry.get_handler(tool_name)
         if handler is None:
-            return ToolResult(tool_name, False, None, f"No handler for tool '{tool_name}'")
+            return ToolResult(
+                tool_name, False, None, f"No handler for tool '{tool_name}'"
+            )
 
         try:
-            result = await handler.execute(args, {
-                "project_root": context.project_root,
-                "task_id": context.task_model.id,
-                "agent_name": context.agent_model.name,
-            })
+            result = await handler.execute(
+                args,
+                {
+                    "project_root": context.project_root,
+                    "task_id": context.task_model.id,
+                    "agent_name": context.agent_model.name,
+                },
+            )
             return ToolResult(tool_name, True, result)
         except Exception as exc:
-            logger.warning("Tool execution failed for %s: %s", tool_name, type(exc).__name__)
+            logger.warning(
+                "Tool execution failed for %s: %s", tool_name, type(exc).__name__
+            )
             return ToolResult(tool_name, False, None, str(exc))
 
     async def _record_step(
@@ -408,17 +602,19 @@ class AgentEngine:
         error: Optional[str] = None,
     ) -> None:
         def op(db):
-            db.add(TaskStepModel(
-                task_id=context.task_model.id,
-                step_index=context.step_count,
-                kind=kind.value,
-                content=content,
-                tool_name=tool_name,
-                tool_args=tool_args,
-                tool_result=tool_result,
-                error=error,
-                created_at=datetime.now(timezone.utc).isoformat(),
-            ))
+            db.add(
+                TaskStepModel(
+                    task_id=context.task_model.id,
+                    step_index=context.step_count,
+                    kind=kind.value,
+                    content=content,
+                    tool_name=tool_name,
+                    tool_args=tool_args,
+                    tool_result=tool_result,
+                    error=error,
+                    created_at=datetime.now(timezone.utc).isoformat(),
+                )
+            )
             db.commit()
 
         await self._with_db(op)
@@ -441,4 +637,11 @@ class AgentEngine:
         return await self._with_db(op)
 
 
-__all__ = ["AgentEngine", "ExecutionContext", "TaskStatus", "StepKind", "ToolResult", "get_builtin_tool_registry"]
+__all__ = [
+    "AgentEngine",
+    "ExecutionContext",
+    "TaskStatus",
+    "StepKind",
+    "ToolResult",
+    "get_builtin_tool_registry",
+]

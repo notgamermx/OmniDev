@@ -60,11 +60,11 @@ async def get_session_memory(key: str, session_id: Optional[str] = None):
 
 
 @router.get("/session", summary="List session memories")
-async def list_session_memories():
+async def list_session_memories(session_id: Optional[str] = None):
     """List all session memories."""
     service = get_memory_service()
 
-    memories = await service.list_session_memories()
+    memories = await service.list_session_memories(session_id)
     return {
         "memories": [
             {
@@ -79,11 +79,11 @@ async def list_session_memories():
 
 
 @router.delete("/session/{key}", summary="Delete session memory")
-async def delete_session_memory(key: str):
+async def delete_session_memory(key: str, session_id: Optional[str] = None):
     """Delete a session-level memory."""
     service = get_memory_service()
 
-    success = await service.delete_session_memory(key)
+    success = await service.delete_session_memory(key, session_id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Memory '{key}' not found")
 

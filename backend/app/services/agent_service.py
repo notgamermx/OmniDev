@@ -59,7 +59,7 @@ class AgentService:
 
         # Default tools to all enabled tools
         if tool_names is None:
-            tool_names = [t.name for t in self.tool_registry.list_tools() if self.tool_registry.is_enabled(t.name)]
+            tool_names = [t.name for t in self.tool_registry.list_tools() if self.tool_registry.is_enabled(t.name) and t.permission == Permission.READ]
 
         def op(db):
             agent = Agent(
@@ -92,6 +92,7 @@ You should:
 2. Use available tools to gather information and take actions
 3. Be thorough and careful in your reasoning
 4. Report your findings clearly
+5. For development tasks, run the project tests using the shell tool, inspect failures, fix them, and rerun before COMPLETE. Never claim verification without successful tool output.
 
 Available tools can be invoked using the ACTION format:
 ACTION: tool_name{"arg": "value"}

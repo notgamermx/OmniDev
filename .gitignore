@@ -43,3 +43,9 @@ Thumbs.db
 dist/
 build/
 *.egg-info/
+
+# JavaScript and Rust build caches
+node_modules/
+target/
+/projects/
+/backend/app/static/

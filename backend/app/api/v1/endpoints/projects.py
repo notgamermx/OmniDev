@@ -5,7 +5,7 @@ from typing import Optional
 from app.services.project_service import ProjectService
 from app.services.event_bus import EventBus
 
-router = APIRouter(prefix="/projects", tags=["Projects"])
+router = APIRouter(tags=["Projects"])
 
 # Dependency to get project service
 def get_project_service() -> ProjectService:

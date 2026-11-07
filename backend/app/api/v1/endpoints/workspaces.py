@@ -1,10 +1,12 @@
 """Workspace API endpoints."""
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, Path as PathParam, Body
 
 from app.services.project_service import ProjectService
 from app.services.event_bus import EventBus
 
-router = APIRouter(prefix="/workspaces", tags=["Workspaces"])
+router = APIRouter(tags=["Workspaces"])
 
 
 def get_project_service() -> ProjectService:
@@ -34,7 +36,7 @@ async def create_workspace(
 
 @router.get("/", response_model=dict, summary="List all workspaces")
 async def list_workspaces(
-    project_id: Optional[int] = Body(None, description="Filter by project ID"),
+    project_id: Optional[int] = None,
 ):
     """List workspaces, optionally filtered by project."""
     service = get_project_service()

@@ -1,123 +1,70 @@
-/**
- * OmniDev Desktop - API Service
- * Handles all API communication via Electron IPC
- */
-
-class ApiService {
-    constructor() {
-        this.basePath = '';
-    }
-
-    /**
-     * Make an API request to the backend
-     * @param {string} path - API endpoint path
-     * @param {string} method - HTTP method
-     * @param {object|null} body - Request body
-     * @returns {Promise<object>} - API response
-     */
-    async request(path, method = 'GET', body = null) {
-        if (!window.electronAPI) {
-            throw new Error('Electron API not available');
-        }
-        return await window.electronAPI.request(path, method, body);
-    }
-
-    // Health endpoints
-    getHealth() {
-        return this.request('/api/v1/health/');
-    }
-
-    getSystem() {
-        return this.request('/api/v1/system/');
-    }
-
-    // Agent endpoints
-    listAgents(enabledOnly = true) {
-        return this.request(`/api/v1/agents/?enabled_only=${enabledOnly}`);
-    }
-
-    getAgent(agentId) {
-        return this.request(`/api/v1/agents/${agentId}`);
-    }
-
-    createAgent(agentData) {
-        return this.request('/api/v1/agents/', 'POST', agentData);
-    }
-
-    deleteAgent(agentId) {
-        return this.request(`/api/v1/agents/${agentId}`, 'DELETE');
-    }
-
-    // Task endpoints
-    listTasks(filter = {}) {
-        const params = new URLSearchParams(filter).toString();
-        return this.request(`/api/v1/tasks/${params ? `?${params}` : ''}`);
-    }
-
-    getTask(taskId) {
-        return this.request(`/api/v1/tasks/${taskId}`);
-    }
-
-    createTask(taskData) {
-        return this.request('/api/v1/tasks/', 'POST', taskData);
-    }
-
-    executeTask(taskId, projectRoot = '.') {
-        return this.request(`/api/v1/tasks/${taskId}/execute`, 'POST', { project_root: projectRoot });
-    }
-
-    cancelTask(taskId) {
-        return this.request(`/api/v1/tasks/${taskId}/cancel`, 'POST');
-    }
-
-    // Memory endpoints
-    getSessionMemory(key) {
-        return this.request(`/api/v1/memory/session/${key}`);
-    }
-
-    setSessionMemory(memoryData) {
-        return this.request('/api/v1/memory/session/', 'POST', memoryData);
-    }
-
-    listSessionMemories() {
-        return this.request('/api/v1/memory/session');
-    }
-
-    deleteSessionMemory(key) {
-        return this.request(`/api/v1/memory/session/${key}`, 'DELETE');
-    }
-
-    listProjectMemories(projectId) {
-        return this.request(`/api/v1/memory/project/${projectId}`);
-    }
-
-    recallProjectContext(projectId, query, maxItems = 10) {
-        return this.request(`/api/v1/memory/project/${projectId}/recall`, 'POST', { query, max_items: maxItems });
-    }
-
-    // File operations (via Electron IPC)
-    readFile(path) {
-        if (!window.electronAPI) {
-            throw new Error('Electron API not available');
-        }
-        return window.electronAPI.read(path);
-    }
-
-    writeFile(path, content) {
-        if (!window.electronAPI) {
-            throw new Error('Electron API not available');
-        }
-        return window.electronAPI.write(path, content);
-    }
-
-    listFiles(dirPath = '.') {
-        if (!window.electronAPI) {
-            throw new Error('Electron API not available');
-        }
-        return window.electronAPI.list(dirPath);
-    }
+export function connection() {
+  return {
+    url:
+      localStorage.getItem("omnidev-url") ||
+      (location.protocol === "http:" || location.protocol === "https:"
+        ? location.hostname === "tauri.localhost"
+          ? "http://127.0.0.1:8000"
+          : ""
+        : "http://127.0.0.1:8000"),
+    token: sessionStorage.getItem("omnidev-token") || "",
+  };
 }
-
-// Export singleton instance
-const api = new ApiService();
-export default api;
+export async function request(path, method = "GET", body) {
+  const { url, token } = connection();
+  const response = await fetch(url + "/api/v1" + path, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const result = await response.json();
+  if (!response.ok)
+    throw new Error(
+      typeof result.detail === "string"
+        ? result.detail
+        : JSON.stringify(result.detail || result),
+    );
+  return result;
+}
+export async function streamChat(body, onText) {
+  const { url, token } = connection();
+  const response = await fetch(url + "/api/v1/chat/completions/stream", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const result = await response.json();
+    throw new Error(result.detail || "Chat failed");
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let i;
+      while ((i = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, i).trim();
+        buffer = buffer.slice(i + 1);
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (data === "[DONE]") return;
+        const event = JSON.parse(data);
+        if (event.error) throw new Error(event.error.detail);
+        onText(event.choices?.[0]?.delta?.content || "");
+      }
+    }
+  } finally {
+    await reader.cancel();
+    reader.releaseLock();
+  }
+}

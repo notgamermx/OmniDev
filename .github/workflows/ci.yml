@@ -1,0 +1,37 @@
+name: Verify OmniDev
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/desktop/renderer/package-lock.json
+      - run: python -m pip install -e '.[dev]'
+      - run: python -m pytest backend/tests -q
+      - run: python scripts/release.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omnidev-python
+          path: dist/*.whl
+  desktop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - run: npm ci --prefix apps/desktop && npm ci --prefix apps/desktop/renderer
+      - run: npm --prefix apps/desktop run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omnidev-linux-desktop
+          path: apps/desktop/src-tauri/target/release/bundle/deb/*.deb
