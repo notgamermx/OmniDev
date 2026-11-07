@@ -1,0 +1,60 @@
+name: Installed Windows Docker verification
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful Verify OmniDev run ID containing the MSI to test
+        required: true
+        type: string
+permissions:
+  actions: read
+  contents: read
+jobs:
+  installed-docker:
+    # Configure a dedicated Windows runner with Docker Desktop in Linux mode.
+    runs-on: [self-hosted, Windows, X64, omnidev-docker]
+    timeout-minutes: 30
+    steps:
+      - name: Select the verified source revision
+        id: source
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ inputs.run_id }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          if ($env:RUN_ID -notmatch '^\d+$') { throw 'run_id must be numeric' }
+          $Run = gh api "repos/$env:GH_REPO/actions/runs/$env:RUN_ID" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $Run.conclusion -ne 'success' -or $Run.event -eq 'pull_request' -or $Run.path -ne '.github/workflows/ci.yml') { throw 'Select a successful trusted Verify OmniDev push or tag run' }
+          if ($Run.head_sha -ne $env:EXPECTED_SHA) { throw 'Dispatch from the same revision as the selected CI run' }
+          "sha=$($Run.head_sha)" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Require Docker Linux containers and prepare image
+        shell: pwsh
+        run: |
+          $Mode = docker info --format '{{.OSType}}'
+          if ($LASTEXITCODE -ne 0 -or $Mode -ne 'linux') { throw 'Start Docker Desktop with Linux containers on this Windows host' }
+          docker build -t omnidev-executor:1 -f containers/executor.Dockerfile containers
+          if ($LASTEXITCODE -ne 0) { throw 'Execution image build failed' }
+      - uses: actions/download-artifact@v4
+        with:
+          name: OmniDev-Windows
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: installed-package
+      - name: Install MSI and exercise its engine through the GUI
+        shell: pwsh
+        run: |
+          $Installer = @(Get-ChildItem installed-package -Filter '*.msi' -Recurse)
+          if ($Installer.Count -ne 1) { throw 'Expected exactly one MSI' }
+          $InstallDir = "$env:LOCALAPPDATA\OmniDev"
+          $Install = Start-Process msiexec.exe -ArgumentList @('/i', "`"$($Installer[0].FullName)`"", '/qn', '/norestart', "INSTALLDIR=`"$InstallDir`"") -Wait -PassThru
+          if ($Install.ExitCode -notin @(0, 3010)) { throw "Installer failed: $($Install.ExitCode)" }
+          python scripts/smoke_desktop_windows.py "$InstallDir/omnidev.exe" --docker
+          if ($LASTEXITCODE -ne 0) { throw 'Installed MSI Docker verification failed' }

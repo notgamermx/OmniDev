@@ -70,7 +70,11 @@ class HarnessConnection(BaseModel):
         return value
 
 
-class HarnessRun(BaseModel):
+class HarnessApproval(BaseModel):
+    approve_host_execution: bool = False
+
+
+class HarnessRun(HarnessApproval):
     prompt: str = Field(min_length=1, max_length=50000)
     path: str = "."
     timeout: int = Field(default=120, ge=1, le=120)
@@ -144,6 +148,17 @@ async def put_harness(name: str, value: HarnessConnection):
     return save_connector("harnesses", name, value.model_dump())
 
 
+def require_host_approval(value: HarnessApproval | None):
+    if value is None or not value.approve_host_execution:
+        raise HTTPException(
+            403,
+            "Explicit approval required for this host operation: harnesses run with "
+            "your OS account permissions, can access files outside PROJECT_ROOT, "
+            "and can use the network. Send approve_host_execution=true only after "
+            "reviewing the saved command and arguments.",
+        )
+
+
 def require_terminal():
     if not settings.TERMINAL_ENABLED:
         raise HTTPException(
@@ -154,6 +169,7 @@ def require_terminal():
 @router.post("/harnesses/{name}/run")
 async def run_harness(name: str, value: HarnessRun):
     require_terminal()
+    require_host_approval(value)
     harness = get_connector("harnesses", name)
     argv = [
         harness["command"],
@@ -170,8 +186,9 @@ async def run_harness(name: str, value: HarnessRun):
 
 
 @router.post("/harnesses/{name}/install")
-async def install_harness(name: str):
+async def install_harness(name: str, value: HarnessApproval | None = None):
     require_terminal()
+    require_host_approval(value)
     harness = get_connector("harnesses", name)
     if not harness["install_command"]:
         raise HTTPException(

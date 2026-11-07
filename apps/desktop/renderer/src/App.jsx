@@ -42,8 +42,8 @@ export default function App() {
       element.dataset[key] = value;
   }, [appearance]);
   const [dialog, setDialog] = useState(null);
-  function ask(title, value = "") {
-    return new Promise((resolve) => setDialog({ title, value, resolve }));
+  function ask(title, value = "", description = "") {
+    return new Promise((resolve) => setDialog({ title, value, description, resolve }));
   }
 
   const [view, setView] = useState("Chat"),
@@ -242,6 +242,7 @@ export default function App() {
         <div className="modal">
           <form
             role="dialog"
+            className={dialog.description ? "host-approval" : undefined}
             aria-modal="true"
             aria-label={dialog.title}
             onSubmit={(event) => {
@@ -251,6 +252,7 @@ export default function App() {
             }}
           >
             <h2>{dialog.title}</h2>
+            {dialog.description && <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{dialog.description}</p>}
             {dialog.value !== null && (
               <input
                 autoFocus
@@ -925,7 +927,7 @@ export default function App() {
             <Models act={act} refresh={refresh} busy={busy} />
           )}
           {view === "Connectors" && (
-            <Connectors act={act} refresh={refresh} busy={busy} />
+            <Connectors act={act} refresh={refresh} busy={busy} ask={ask} />
           )}
           {view === "Settings" && (
             <Personalization value={appearance} onChange={setAppearance} />

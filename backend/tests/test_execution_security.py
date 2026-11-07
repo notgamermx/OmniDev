@@ -77,12 +77,55 @@ async def test_real_docker_boundaries(tmp_path):
     root=tmp_path/'workspace';root.mkdir()
     secret=tmp_path/'secret';secret.write_text('host-only-secret')
     (root/'test_app.py').write_text('assert False')
+    result=await run_command('echo sandbox-ready',root,5)
+    assert result['exit_code'] == 0 and 'sandbox-ready' in result['output'], result
     result=await run_command('cat '+str(secret),root,5)
     assert result['exit_code'] != 0 and 'host-only-secret' not in result['output']
     result=await run_command('echo tampered > test_app.py',root,5)
     assert result['exit_code'] != 0
     assert (root/'test_app.py').read_text()=='assert False'
     result=await run_command("python -c 'print(\"x\"*100000)'",root,5)
+    assert result['exit_code'] == 0, result
     assert len(result['output'].encode()) <= settings.COMMAND_OUTPUT_BYTES
     result=await run_command('sleep 60',root,1)
     assert result['timed_out']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["tests/test_app.py", "pyproject.toml", "nested/app.spec.js"])
+async def test_write_handler_protects_existing_verification_inputs_directly(tmp_path, name):
+    from app.services.tool_registry import WriteFileHandler
+    check = tmp_path / name
+    check.parent.mkdir(parents=True, exist_ok=True)
+    check.write_text("original")
+    with pytest.raises(RuntimeError, match="read-only"):
+        await WriteFileHandler().execute({"path": "./" + name, "content": "tampered"}, {"project_root": tmp_path})
+    assert check.read_text() == "original"
+
+
+@pytest.mark.asyncio
+async def test_handler_protects_deleted_original_but_allows_new_test_edits(tmp_path):
+    from app.services.tool_registry import WriteFileHandler
+    original = tmp_path / "test_original.py"
+    original.write_text("original")
+    context = {"project_root": tmp_path, "verification_inputs": snapshot(tmp_path)}
+    original.unlink()
+    handler = WriteFileHandler()
+    with pytest.raises(RuntimeError, match="read-only"):
+        await handler.execute({"path": original.name, "content": "tampered"}, context)
+    for content in ("new", "repaired"):
+        await handler.execute({"path": "test_new.py", "content": content}, context)
+    assert (tmp_path / "test_new.py").read_text() == "repaired"
+
+
+@pytest.mark.asyncio
+async def test_write_via_hard_link_alias_does_not_modify_original_test(tmp_path):
+    import os
+    from app.services.tool_registry import WriteFileHandler
+    original = tmp_path / "test_app.py"
+    original.write_text("original")
+    alias = tmp_path / "notes.txt"
+    os.link(original, alias)
+    await WriteFileHandler().execute({"path": alias.name, "content": "tampered"}, {"project_root": tmp_path})
+    assert original.read_text() == "original"
+    assert alias.read_text() == "tampered"

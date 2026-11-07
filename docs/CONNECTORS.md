@@ -77,18 +77,47 @@ For example, a custom Python harness could be:
 
 Use a full executable path when it is not on PATH. You can register any installed harness that supports a noninteractive task argument, including a locally installed coding CLI. OmniDev does not modify its configuration or bypass its login flow. Use its own terminal to log in first.
 
-The optional **install command** is a JSON argument array such as `["npm", "install", "--global", "YOUR_SELECTED_PACKAGE"]`; enter the actual command from the harness's official instructions. **Install** runs it only when you click it. Node/npm, Python or other prerequisites must already be installed. Installations and harnesses have the permissions of your OS account; they are not sandboxed by the working directory.
+<!-- coderabbit-ai-generated:v1 -->
 
-Enable **Connection → Allow terminal and external harness execution** for this engine session, or set `TERMINAL_ENABLED=true` in the engine `.env`. The default remains off. This controls the terminal, shell tool and harness routes together. Runs use a directory inside `PROJECT_ROOT`, retain up to 1 MB of output and time out after 120 seconds. A timed-out install can be retried manually using the harness's official terminal instructions. On Windows, prefer native `.exe` or `node`/`python` entrypoints: batch shims reject shell metacharacters in arguments to prevent expansion of prompts by cmd.exe.
+<!-- coderabbit-ai-generated-section:v1:976e54da406d044f9a58998baea20a1809c89ed63a833306bf4faa250d57d513 -->
+
+The optional **install command** is a JSON argument array such as `["npm", "install", "--global", "YOUR_SELECTED_PACKAGE"]`; enter the actual command from the harness's official instructions. **Install** shows the exact saved command and a host-permission warning; it runs only after you confirm. Each **Run harness** also requires confirmation showing the command, arguments and working folder. Approvals apply to one request and are not saved. Node/npm, Python or other prerequisites must already be installed. Installations and harnesses have the permissions of your OS account; they are not sandboxed by the working directory.
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:8f9e39702434f7eba6d918734a48470f45a867486e55bf4a7a0cca8458b0561c -->
+
+Enable **Connection → Allow terminal and external harness execution** for this engine session, or set `TERMINAL_ENABLED=true` in the engine `.env`. The default remains off. This controls the terminal, shell tool and harness routes together. Runs use a directory inside `PROJECT_ROOT`, retain up to `COMMAND_OUTPUT_BYTES` (32,000 bytes by default) of output and time out after 120 seconds. A timed-out install can be retried manually using the harness's official terminal instructions. On Windows, prefer native `.exe` or `node`/`python` entrypoints: batch shims reject shell metacharacters in arguments to prevent expansion of prompts by cmd.exe.
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:f3606f0f876416f3ae0de2d929a9071a56e3b37846fc02b9276db5bdeae27ecf -->
 
 ```text
 omnidev connectors save harnesses my-harness --file harness.json
-omnidev connectors install harnesses my-harness
-omnidev connectors run harnesses my-harness --path . --prompt "Create and test a calculator"
+omnidev connectors install harnesses my-harness --approve-host-execution
+omnidev connectors run harnesses my-harness --approve-host-execution --path . --prompt "Create and test a calculator"
 ```
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 Harness results are shown in Connectors or the CLI. Built-in OmniDev agents use the separate Tasks view for persisted step history and verification. Harness permission prompts, streaming interactive terminals and protocol-specific monitoring remain the responsibility of the selected harness.
 
 ## Personalization
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:47ad97b6ac3865ba196e1ee6c0b3fe08b0fe48cbdcc07281c2dc3e1763b89c4d -->
+
 Settings saves theme (light/dark/system), accent, density, font, motion, response style and default chat mode on the current device. Chat modes Ask, Plan and Code supply different system instructions; they do not grant execution permissions. Use Tasks or an explicitly run harness for development that changes files. Thread search filters saved conversations, Create folder creates a real workspace directory, and Attach text includes the file in the next model prompt (up to 200 KB). There is no profile section.
+
+## Harness API approval
+
+Both `POST /api/v1/connectors/harnesses/{id}/install` and `/run` require `"approve_host_execution": true` in their JSON body, in addition to `TERMINAL_ENABLED=true`. Missing or false approval returns HTTP 403 without launching a process. A run body also includes `prompt`, optional `path`, and optional `timeout` (maximum 120 seconds). This approval authorizes a privileged host operation with the current OS account's permissions, including access outside `PROJECT_ROOT` and network access. Only trusted clients should hold the engine token. Agent tools cannot grant this approval.
+
+
+<!-- /coderabbit-ai-generated:v1 -->

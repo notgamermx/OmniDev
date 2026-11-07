@@ -36,7 +36,13 @@ Download the MSI from [GitHub Releases](https://github.com/notgamermx/OmniDev/re
 
 <!-- coderabbit-ai-generated-section:v1:125f8e337df73207f35d58543e1e867ff2620e33f04f45db8666f286d36acc4f -->
 
-For Windows installation, the bundled desktop/CLI build and source startup, see [Windows guide](docs/WINDOWS.md). GitHub Actions produces an MSI installer with a Start menu shortcut and an optional portable CLI ZIP. Install the MSI, then search for OmniDev in Start. The v1.0.1 Windows MSI passed installation, Start menu, startup, and engine lifecycle checks in [CI run 42362034188](https://github.com/notgamermx/OmniDev/actions/runs/42362034188). Version 1.0.2 requires a new CI pass before release.
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:bd25d54dd3f19a67db2fae630390f2bd2505bf94b5449968b5f4750ee7c066bc -->
+
+For Windows installation, the bundled desktop/CLI build and source startup, see [Windows guide](docs/WINDOWS.md). GitHub Actions produces an MSI installer with a Start menu shortcut and an optional portable CLI ZIP. Install the MSI, then search for OmniDev in Start. The v1.0.2 Windows MSI passed installation, Start menu, startup, and engine lifecycle checks in [CI run 42371385583](https://github.com/notgamermx/OmniDev/actions/runs/42371385583). Version 1.0.3 requires a new CI pass before release. Docker execution through an installed MSI has a separate Windows check described in the Windows guide; it has not yet been run.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 <!-- /coderabbit-ai-generated:v1 -->
 
@@ -155,12 +161,18 @@ Before listening outside loopback, set a unique `API_TOKEN` with at least 32 cha
 
 ## Release and verification
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:e69c5f11bcff81b7bb719ddca51bca870cdaa87772dd24f218517c4c41d259d7 -->
+
 ```bash
 python scripts/release.py
-pip install dist/omnidev-1.0.2-py3-none-any.whl
+pip install dist/omnidev-1.0.3-py3-none-any.whl
 omnidev serve
 python -m pytest backend/tests -q
 ```
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 The release script bundles the web build, CLI, migrations, and engine into the wheel. Installed builds store data under `~/.omnidev`; `OMNIDEV_HOME` overrides it. Back up this directory and `PROJECT_ROOT` before upgrades. A server restart marks interrupted running tasks as failed so they can be reviewed instead of silently replaying tools.
 
@@ -195,7 +207,13 @@ docker build -t omnidev-executor:1 -f containers/executor.Dockerfile containers
 
 On Windows, run Docker Desktop with Linux containers. Docker must run on the same machine as the engine. Shell execution fails closed if Docker or the image is unavailable. The container mounts only the selected workspace, has no network or provider credentials, uses a read-only system filesystem, and has memory, CPU, process, time and output limits. Existing test inputs and Git metadata are mounted read-only. Install any required project dependencies in a custom image and set `EXECUTION_IMAGE`; package installation over the network is unavailable inside task containers. Keep secrets out of the selected workspace. Docker is a boundary, not a guarantee against container runtime vulnerabilities.
 
-Existing tests and verification configuration are hashed before execution and checked between steps and before completion. Agent file writes to those original inputs are rejected. New tests can be created, but a passing command is only as strong as the checks the user selected; review the resulting source and new tests. Agent Git tools are blocked from invoking host Git; use the isolated shell for Git inspection and commit changes yourself after review. Custom harness installation and execution are explicit trusted host operations and are not container-isolated.
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:e672deac07bc4c6ec047cb068e3cb9b3b8a73f9c0845d31765dade548bf45be6 -->
+
+Existing tests and verification configuration are hashed before execution and checked between steps and before completion. The file tool rejects writes to those original inputs before touching disk, including direct handler calls. New source files use atomic replacement to avoid changing protected files through hard links. New tests can be created, but a passing command is only as strong as the checks the user selected; review the resulting source and new tests. Agent Git tools are blocked from invoking host Git; use the isolated shell for Git inspection and commit changes yourself after review. Custom harness installation and execution require explicit approval for each operation, showing the command and OS permissions in the UI. They run on the host with access to your OS account and network; they are not container-isolated. CLI users must pass `--approve-host-execution`. Trusted manual editor saves remain available for human edits to tests and configuration.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 `COMMAND_OUTPUT_BYTES` defaults to 32,000, `TASK_TIMEOUT_SECONDS` to 900, and `TASK_TOKEN_BUDGET` to 100,000. <!-- coderabbit-ai-generated:v1 -->
 
@@ -209,12 +227,24 @@ The token budget conservatively reserves UTF-8 input bytes plus maximum response
 
 After reviewing the changes and passing CI, create and push a version tag matching `pyproject.toml` and the desktop manifests:
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:ba1f6f5a8ff36345e730a0e03a7cfa1f4e2c9c3eaea1cabbda32f44224ef7a04 -->
+
 ```bash
-git tag -a v1.0.2 -m "OmniDev 1.0.2"
-git push origin v1.0.2
+git tag -a v1.0.3 -m "OmniDev 1.0.3"
+git push origin v1.0.3
 ```
 
-The tag workflow runs backend tests, builds desktop and Python packages, exercises the installed Windows app, and publishes assets to GitHub Releases only after all jobs succeed. `omnidev-1.0.2-py3-none-any.whl` replaces the earlier `personal_ai_dev` distribution. Uninstall `personal-ai-dev` before installing `omnidev` to avoid overlapping CLI files; back up your OmniDev data first. Repository topics: `ai-agents`, `fastapi`, `tauri`, `ollama`.
+<!-- /coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:02c11a5918982dddf9a9d0d8c68848b1fc48d630be8f5030b0e4816fb53b182a -->
+
+The tag workflow runs backend tests, builds desktop and Python packages, exercises the installed Windows app, and publishes assets to GitHub Releases only after all jobs succeed. `omnidev-1.0.3-py3-none-any.whl` replaces the earlier `personal_ai_dev` distribution. Uninstall `personal-ai-dev` before installing `omnidev` to avoid overlapping CLI files; back up your OmniDev data first. Repository topics: `ai-agents`, `fastapi`, `tauri`, `ollama`.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 
 <!-- /coderabbit-ai-generated:v1 -->

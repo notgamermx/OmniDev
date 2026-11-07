@@ -83,7 +83,30 @@ The MSI installer is under `apps/desktop/src-tauri/target/release/bundle/msi/`
 
 ## Development source stays small
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:dc05d2a795edcec08aa8281ebc692bc5ddea9ab7d4e01c0e789827e6b2011198 -->
+
 Python environments, `node_modules`, Rust `target`, bundled Python, model files, build outputs and local data are ignored by Git. Installers include runtime dependencies instead. Harnesses are separate applications: install their prerequisites and authenticate them using their official instructions. OmniDev does not bundle their accounts or model weights.
+
+## Verify Docker through the installed MSI
+
+The normal Windows CI job installs the MSI and checks GUI startup, Start menu integration and engine shutdown. It does not establish Docker compatibility.
+
+For the additional Docker check, configure a dedicated Windows x64 GitHub Actions runner with labels `self-hosted`, `Windows`, `X64`, and `omnidev-docker`. It needs Python 3.12, GitHub CLI, WebView2 and a running Docker Desktop using Linux containers. Use a disposable runner account: this job installs the MSI.
+
+After **Verify OmniDev** succeeds for the updated code, dispatch **Installed Windows Docker verification** from the same commit, supplying that run's numeric ID. The workflow downloads that run's actual MSI, installs it, launches the installed GUI, and exercises authenticated terminal requests against its bundled engine. It checks the Windows workspace bind mount, network isolation, read-only existing tests, output limits, command timeout, single instance behavior, and engine shutdown. A missing Docker daemon or wrong container mode fails the check.
+
+To run the smoke check manually after building `omnidev-executor:1`, use:
+
+```powershell
+python scripts/smoke_desktop_windows.py "$env:LOCALAPPDATA/OmniDev/omnidev.exe" --docker
+```
+
+The check uses a temporary OmniDev data directory and synthetic files. This additional installed-MSI Docker check remains unverified until it passes on a Windows machine with Docker Desktop.
+
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 
 <!-- /coderabbit-ai-generated:v1 -->

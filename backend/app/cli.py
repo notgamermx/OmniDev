@@ -354,6 +354,8 @@ def main():
     connectors.add_argument("id", nargs="?")
     connectors.add_argument("--file", help="JSON connector definition; avoids keys in shell history")
     connectors.add_argument("--prompt")
+    connectors.add_argument("--approve-host-execution", action="store_true",
+                            help="Approve this harness operation with full OS account and network access")
     connectors.add_argument("--path", default=".")
     files = subs.add_parser("files")
     files.add_argument("path", nargs="?", default=".")
@@ -476,13 +478,17 @@ def main():
                     elif args.action == "models":
                         show(req(path + "/models"))
                     elif args.action == "install":
-                        result = req(path + "/install", "POST")
+                        if not args.approve_host_execution:
+                            parser.error("Harness installation requires --approve-host-execution (full OS account access)")
+                        result = req(path + "/install", "POST", {"approve_host_execution": True})
                         show(result)
                         return result["exit_code"] or 0
                     else:
                         if not args.prompt:
                             parser.error("--prompt is required")
-                        result = req(path + "/run", "POST", {"prompt": args.prompt, "path": args.path})
+                        if not args.approve_host_execution:
+                            parser.error("Harness execution requires --approve-host-execution (full OS account access)")
+                        result = req(path + "/run", "POST", {"prompt": args.prompt, "path": args.path, "approve_host_execution": True})
                         print(result["output"], end="")
                         return result["exit_code"] or 0
             elif cmd == "files":

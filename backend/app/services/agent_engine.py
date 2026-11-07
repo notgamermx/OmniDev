@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, AsyncIterator, Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.database.session import SessionLocal
 from app.models.agent import (
@@ -148,19 +148,47 @@ class AgentEngine:
         return await self._with_db(op)
 
     async def _persist_task(self, context: ExecutionContext, **changes: Any) -> None:
-        def op(db):
-            task = db.get(TaskModel, context.task_model.id)
-            if task is None:
-                raise ValueError(f"Task {context.task_model.id} not found")
-            for name, value in changes.items():
-                setattr(task, name, value)
-            task.updated_at = datetime.now(timezone.utc).isoformat()
-            db.commit()
+        changes["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-        await self._with_db(op)
+        def op(db):
+            changed = db.execute(
+                update(TaskModel).where(
+                    TaskModel.id == context.task_model.id,
+                    TaskModel.status != TaskStatus.CANCELLED.value,
+                ).values(**changes)
+            ).rowcount
+            db.commit()
+            if not changed:
+                task = db.get(TaskModel, context.task_model.id)
+                if task is None:
+                    raise ValueError(f"Task {context.task_model.id} not found")
+                return {"status": task.status, "result": task.result,
+                        "error": task.error, "step_count": task.step_count,
+                        "updated_at": task.updated_at}
+            return changes
+
+        persisted = await self._with_db(op)
+        for name, value in persisted.items():
+            setattr(context.task_model, name, value)
+
+    async def _claim_task(self, context: ExecutionContext) -> None:
+        changes = dict(status=TaskStatus.RUNNING.value, error=None, result=None,
+                       step_count=0, updated_at=datetime.now(timezone.utc).isoformat())
+
+        def op(db):
+            claimed = db.execute(
+                update(TaskModel).where(
+                    TaskModel.id == context.task_model.id,
+                    TaskModel.status == TaskStatus.PENDING.value,
+                ).values(**changes)
+            ).rowcount
+            db.commit()
+            return claimed == 1
+
+        if not await self._with_db(op):
+            raise ValueError(f"Task {context.task_model.id} must be pending to start")
         for name, value in changes.items():
             setattr(context.task_model, name, value)
-        context.task_model.updated_at = datetime.now(timezone.utc).isoformat()
 
     async def execute_task(
         self, task_id: int, project_root: str = ".", stream: bool = False
@@ -232,13 +260,7 @@ class AgentEngine:
             ),
         )
 
-        await self._persist_task(
-            context,
-            status=TaskStatus.RUNNING.value,
-            error=None,
-            result=None,
-            step_count=0,
-        )
+        await self._claim_task(context)
         self._running_tasks[task_id] = context
         if stream:
             return self._execute_streaming(context)
@@ -271,8 +293,9 @@ class AgentEngine:
             }
             async for event in self._run_steps(context):
                 yield event
-        except asyncio.CancelledError:
-            await self._persist_task(context, status=TaskStatus.CANCELLED.value)
+        except (asyncio.CancelledError, GeneratorExit):
+            if context.task_model.status == TaskStatus.RUNNING.value:
+                await self._persist_task(context, status=TaskStatus.CANCELLED.value)
             raise
         except Exception:
             logger.exception("Streaming task %s failed", task_id)
@@ -366,6 +389,10 @@ class AgentEngine:
                             + output,
                         )
                         continue
+                if await self._cancel_requested(context):
+                    await self._persist_task(context, status=TaskStatus.CANCELLED.value)
+                    yield {"type": "cancelled", "task_id": task.id, "step": step_index}
+                    return
                 if not unchanged(context.project_root, context.verification_inputs):
                     raise RuntimeError("Original verification inputs changed; human review required")
                 await self._persist_task(
@@ -375,6 +402,9 @@ class AgentEngine:
                     error=None,
                     step_count=step_index,
                 )
+                if task.status == TaskStatus.CANCELLED.value:
+                    yield {"type": "cancelled", "task_id": task.id, "step": step_index}
+                    return
                 if task.project_id is not None:
                     try:
                         from app.services.memory_service import get_memory_service
@@ -462,17 +492,16 @@ class AgentEngine:
             context.cancel_event.set()
 
         def op(db):
-            task = db.get(TaskModel, task_id)
-            if task is None or task.status in {
-                TaskStatus.COMPLETED.value,
-                TaskStatus.FAILED.value,
-                TaskStatus.CANCELLED.value,
-            }:
-                return False
-            task.status = TaskStatus.CANCELLED.value
-            task.updated_at = datetime.now(timezone.utc).isoformat()
+            changed = db.execute(
+                update(TaskModel).where(
+                    TaskModel.id == task_id,
+                    TaskModel.status.in_([TaskStatus.PENDING.value, TaskStatus.RUNNING.value,
+                                          TaskStatus.PAUSED.value]),
+                ).values(status=TaskStatus.CANCELLED.value,
+                         updated_at=datetime.now(timezone.utc).isoformat())
+            ).rowcount
             db.commit()
-            return True
+            return changed == 1
 
         return await self._with_db(op)
 
@@ -606,6 +635,7 @@ class AgentEngine:
                 args,
                 {
                     "project_root": context.project_root,
+                    "verification_inputs": context.verification_inputs,
                     "task_id": context.task_model.id,
                     "agent_name": context.agent_model.name,
                 },

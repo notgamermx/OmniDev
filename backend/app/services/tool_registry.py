@@ -4,18 +4,18 @@ import asyncio
 import json
 import logging
 import os
-import subprocess
+import stat
+import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Type, Union
-from urllib.parse import urlparse
+from typing import Any, Dict, List, Optional
 
 from app.core.config import settings
 from app.core.security import resolve_within_root
-from app.services.llm_providers import OpenAICompatibleProvider, make_provider
+from app.services.verification_guard import protected
+from app.services.llm_providers import make_provider
 
 logger = logging.getLogger(__name__)
 
@@ -426,8 +426,26 @@ class WriteFileHandler(ToolHandler):
 
         try:
             full_path = resolve_within_root(project_root, path_str)
+            relative = str(full_path.relative_to(Path(project_root).resolve()))
+            baseline = context.get("verification_inputs")
+            requested = Path(path_str)
+            if (baseline is not None and relative in baseline) or (
+                baseline is None and full_path.exists()
+                and (protected(Path(relative)) or protected(requested))
+            ):
+                raise PermissionError("Original verification inputs are read-only")
             full_path.parent.mkdir(parents=True, exist_ok=True)
-            full_path.write_text(content)
+            # Replace rather than truncate: an alias hard-linked to a protected
+            # file must not change that file's inode through an unprotected name.
+            fd, temporary = tempfile.mkstemp(dir=full_path.parent)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                    stream.write(content)
+                if full_path.exists():
+                    os.chmod(temporary, stat.S_IMODE(full_path.stat().st_mode))
+                os.replace(temporary, full_path)
+            finally:
+                Path(temporary).unlink(missing_ok=True)
             return {
                 "written": True,
                 "size": len(content),
@@ -555,7 +573,6 @@ class GitStatusHandler(ToolHandler):
     """Handler for git status command."""
 
     async def execute(self, args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
-        import subprocess
         path = args.get("path", ".")
         project_root = resolve_within_root(Path(context.get("project_root", Path.cwd())), path)
 
@@ -649,7 +666,6 @@ class GitCommitHandler(ToolHandler):
     """Handler for git commit command."""
 
     async def execute(self, args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
-        import subprocess
         message = args.get("message", "")
         all_changes = args.get("all", True)
         path = args.get("path", ".")
@@ -711,7 +727,6 @@ class GitDiffHandler(ToolHandler):
     """Handler for git diff command."""
 
     async def execute(self, args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
-        import subprocess
         staged = args.get("staged", False)
         path = args.get("path", ".")
         project_root = resolve_within_root(Path(context.get("project_root", Path.cwd())), path)

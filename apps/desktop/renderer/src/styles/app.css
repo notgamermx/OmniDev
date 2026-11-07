@@ -753,6 +753,12 @@ article {
   min-width: 320px;
   box-shadow: 0 20px 80px #0002;
 }
+.modal form.host-approval {
+  width: min(640px, calc(100vw - 32px));
+  min-width: 0;
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+}
 .modal .toolbar {
   margin-bottom: 0;
 }
