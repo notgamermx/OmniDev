@@ -4,7 +4,17 @@
 
 # OmniDev
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:091192df0b373cf838f63de91b1dac91c6b3c831eb976ee00f16f1b668470afa -->
+
 A local development environment with a FastAPI/SQLite engine, a React web workbench, a Tauri desktop client, and an installed `omnidev` CLI.
+
+[![Download OmniDev for Windows](https://img.shields.io/badge/Download-OmniDev%20for%20Windows-4F46E5?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/notgamermx/OmniDev/actions/workflows/ci.yml)
+
+**To install:** Sign in to GitHub, open the latest successful **Verify OmniDev** run for the branch you want, and download **OmniDev-Windows** under Artifacts. Extract the ZIP and run the `.msi` installer. See the [Windows guide](docs/WINDOWS.md) for details. Artifacts expire, so use a recent successful run.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 <!-- coderabbit-ai-generated:v1 -->
 
