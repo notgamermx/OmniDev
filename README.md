@@ -6,7 +6,7 @@
 
 A local development environment with a FastAPI/SQLite engine, a React web workbench, a Tauri desktop client, and an installed `omnidev` CLI.
 
-[https://github.com/notgamermx/OmniDev/actions/runs/42362034188/artifacts/13570233253]
+[Download Artifact](https://github.com/notgamermx/OmniDev/actions/runs/42362034188/artifacts/13570233253)
 
 <!-- coderabbit-ai-generated:v1 -->
 
