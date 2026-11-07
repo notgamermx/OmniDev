@@ -11,7 +11,7 @@ def test_provider_endpoint_lists_catalog():
     with TestClient(app) as client:
         response = client.get("/api/v1/chat/providers/")
     assert response.status_code == 200
-    assert {item["name"] for item in response.json()} == {item.id for item in PROVIDERS}
+    assert {item["name"] for item in response.json()} == ({item.id for item in PROVIDERS} | {"builtin"})
     assert "configured" in response.json()[0]
 
 

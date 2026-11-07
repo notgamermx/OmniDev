@@ -477,30 +477,9 @@ class ShellHandler(ToolHandler):
             if pattern in command:
                 raise RuntimeError(f"Potentially dangerous command blocked: {pattern}")
 
-        try:
-            process = await asyncio.create_subprocess_shell(
-                command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=context.get("project_root", None)
-            )
-
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
-                timeout=timeout
-            )
-
-            return {
-                "stdout": stdout.decode("utf-8", errors="replace"),
-                "stderr": stderr.decode("utf-8", errors="replace"),
-                "exit_code": process.returncode,
-                "command": command
-            }
-        except asyncio.TimeoutError:
-            raise RuntimeError(f"Command timed out after {timeout} seconds")
-        except Exception as e:
-            logger.error(f"Failed to execute shell command: {e}")
-            raise RuntimeError(f"Failed to execute command: {e}")
+        from app.services.process_service import run_command
+        result = await run_command(command, context.get("project_root", Path.cwd()), min(120, max(1, timeout)))
+        return {**result, "stdout": result["output"], "stderr": "", "command": command}
 
 
 class WebSearchHandler(ToolHandler):
@@ -578,12 +557,12 @@ class GitStatusHandler(ToolHandler):
     async def execute(self, args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
         import subprocess
         path = args.get("path", ".")
-        project_root = context.get("project_root", Path.cwd())
+        project_root = resolve_within_root(Path(context.get("project_root", Path.cwd())), path)
 
         try:
             # First check if we're in a git repo
-            result = await asyncio.create_subprocess_shell(
-                f"git -C {project_root} rev-parse --git-dir 2>/dev/null",
+            result = await asyncio.create_subprocess_exec(
+                "git", "-C", str(project_root), "rev-parse", "--git-dir",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -600,8 +579,8 @@ class GitStatusHandler(ToolHandler):
                 }
 
             # Get current branch
-            branch_result = await asyncio.create_subprocess_shell(
-                f"git -C {project_root} branch --show-current",
+            branch_result = await asyncio.create_subprocess_exec(
+                "git", "-C", str(project_root), "branch", "--show-current",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -609,8 +588,8 @@ class GitStatusHandler(ToolHandler):
             current_branch = branch_stdout.decode("utf-8", errors="replace").strip() or None
 
             # Get all local branches
-            branches_result = await asyncio.create_subprocess_shell(
-                f"git -C {project_root} branch --list",
+            branches_result = await asyncio.create_subprocess_exec(
+                "git", "-C", str(project_root), "branch", "--list",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -622,8 +601,8 @@ class GitStatusHandler(ToolHandler):
             ]
 
             # Get status
-            status_result = await asyncio.create_subprocess_shell(
-                f"git -C {project_root} status --porcelain",
+            status_result = await asyncio.create_subprocess_exec(
+                "git", "-C", str(project_root), "status", "--porcelain",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -674,21 +653,23 @@ class GitCommitHandler(ToolHandler):
         message = args.get("message", "")
         all_changes = args.get("all", True)
         path = args.get("path", ".")
-        project_root = context.get("project_root", Path.cwd())
+        project_root = resolve_within_root(Path(context.get("project_root", Path.cwd())), path)
 
         try:
             # Stage all changes if requested
             if all_changes:
-                stage_result = await asyncio.create_subprocess_shell(
-                    f"git -C {project_root} add -A",
+                stage_result = await asyncio.create_subprocess_exec(
+                    "git", "-C", str(project_root), "add", "-A",
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
-                await stage_result.communicate()
+                _, stage_stderr = await stage_result.communicate()
+                if stage_result.returncode != 0:
+                    raise RuntimeError(f"Git staging failed: {stage_stderr.decode('utf-8', errors='replace')}")
 
             # Commit
-            commit_result = await asyncio.create_subprocess_shell(
-                f'git -C {project_root} commit -m {json.dumps(message)}',
+            commit_result = await asyncio.create_subprocess_exec(
+                "git", "-C", str(project_root), "commit", "-m", message,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -696,7 +677,7 @@ class GitCommitHandler(ToolHandler):
 
             if commit_result.returncode != 0:
                 # No changes to commit
-                error_text = stderr.decode("utf-8", errors="replace")
+                error_text = (stdout + stderr).decode("utf-8", errors="replace")
                 if "nothing to commit" in error_text:
                     return {
                         "success": True,
@@ -706,8 +687,8 @@ class GitCommitHandler(ToolHandler):
                 raise RuntimeError(f"Git commit failed: {error_text}")
 
             # Get commit hash
-            hash_result = await asyncio.create_subprocess_shell(
-                f"git -C {project_root} rev-parse HEAD",
+            hash_result = await asyncio.create_subprocess_exec(
+                "git", "-C", str(project_root), "rev-parse", "HEAD",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -733,15 +714,15 @@ class GitDiffHandler(ToolHandler):
         import subprocess
         staged = args.get("staged", False)
         path = args.get("path", ".")
-        project_root = context.get("project_root", Path.cwd())
+        project_root = resolve_within_root(Path(context.get("project_root", Path.cwd())), path)
 
         try:
-            diff_cmd = f"git -C {project_root} diff"
+            diff_args = ["git", "-C", str(project_root), "diff"]
             if staged:
-                diff_cmd = f"git -C {project_root} diff --cached"
+                diff_args.append("--cached")
 
-            result = await asyncio.create_subprocess_shell(
-                diff_cmd,
+            result = await asyncio.create_subprocess_exec(
+                *diff_args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )

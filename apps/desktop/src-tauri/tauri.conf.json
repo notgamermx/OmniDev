@@ -1,0 +1,37 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OmniDev",
+  "version": "1.0.0",
+  "identifier": "com.omnidev.desktop",
+  "build": {
+    "beforeDevCommand": "npm --prefix renderer run dev",
+    "devUrl": "http://localhost:3000",
+    "beforeBuildCommand": "npm --prefix renderer run build",
+    "frontendDist": "../renderer/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "OmniDev",
+        "width": 1440,
+        "height": 950,
+        "minWidth": 850,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:* http://localhost:8000 https:; img-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "deb"
+    ],
+    "shortDescription": "Personal AI development environment",
+    "category": "DeveloperTool",
+    "icon": [
+      "icons/icon.png"
+    ]
+  }
+}

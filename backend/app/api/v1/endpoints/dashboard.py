@@ -77,13 +77,10 @@ async def end_dashboard_session(session_id: str):
 @router.get("/projects", summary="List dashboard projects")
 async def list_dashboard_projects():
     """List all projects for the dashboard."""
-    # This would query projects - using memory service for demo
-    return {
-        "projects": [
-            {"id": 1, "name": "Sample Project", "memories_count": 5},
-            {"id": 2, "name": "Another Project", "memories_count": 2}
-        ]
-    }
+    from app.services.project_service import ProjectService
+    projects = await ProjectService().list_projects()
+    memory = get_memory_service()
+    return {"projects": [{"id": p.id, "name": p.name, "memories_count": len(await memory.list_project_memories(p.id))} for p in projects]}
 
 
 @router.get("/project/{project_id}/snapshot", summary="Get project snapshot")
@@ -119,9 +116,11 @@ async def get_project_snapshot(project_id: int):
 @router.get("/status", summary="Get dashboard status")
 async def get_dashboard_status():
     """Get current dashboard system status."""
+    from app.services.project_service import ProjectService
+    from app.api.v1.endpoints.workbench import sessions
     return {
         "api_available": True,
-        "active_sessions": 0,
-        "projects_count": 0,
+        "active_sessions": len(sessions()["sessions"]),
+        "projects_count": len(await ProjectService().list_projects()),
         "last_update": datetime.now(timezone.utc).isoformat()
     }

@@ -6,7 +6,7 @@ from sqlalchemy.dialects import sqlite
 
 # revision identifiers, used by Alembic.
 revision = "0005_memory_tables"
-down_revision = "0004_create_agent_engine"
+down_revision = "0004_agent_engine"
 branch_labels = None
 depends_on = None
 

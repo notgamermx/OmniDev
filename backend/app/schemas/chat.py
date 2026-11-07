@@ -86,6 +86,7 @@ class ChatCompletionStreamChunkSchema(BaseModel):
 
 class ProviderInfo(BaseModel):
     """Information about an AI provider."""
+    display_name: str | None = None
     name: str = Field(..., description="Provider name")
     category: str
     api_style: str

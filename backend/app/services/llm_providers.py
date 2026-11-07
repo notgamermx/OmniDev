@@ -253,12 +253,33 @@ class CohereProvider(OpenAICompatibleProvider):
         return events()
 
 
+def has_provider(provider_id: str) -> bool:
+    from app.services.connector_service import load_connectors
+    return provider_id == "builtin" or provider_id in PROVIDER_BY_ID or provider_id in load_connectors()["providers"]
+
+
 def make_provider(provider_id: str, config: Settings = settings, *, transport: httpx.AsyncBaseTransport | None = None) -> OpenAICompatibleProvider:
+    if provider_id == "builtin":
+        from app.services.model_router import ModelPool
+        return ModelPool(config, transport)
     definition = PROVIDER_BY_ID.get(provider_id)
     if definition is None:
-        raise KeyError(provider_id)
+        from app.services.connector_service import load_connectors
+        connection = load_connectors()["providers"].get(provider_id)
+        if connection is None:
+            raise KeyError(provider_id)
+        definition = ProviderDefinition(provider_id, connection["name"], "connector", connection["base_url"], None,
+                                        "openai_compatible", "check_gateway_plan", "", "")
+        return OpenAICompatibleProvider(definition, connection.get("api_key") or None, transport=transport)
     credential = getattr(config, definition.env_key) if definition.env_key else None
     api_key = credential.get_secret_value().strip() or None if credential else None
     account_id = getattr(config, definition.account_id_env) if definition.account_id_env else None
+    from app.services.connector_service import load_connectors
+    saved = load_connectors()["providers"].get(provider_id, {})
+    api_key = saved.get("api_key") or api_key
+    account_id = saved.get("account_id") or account_id
     provider_type = CohereProvider if definition.api_style == "native" else OpenAICompatibleProvider
+    if provider_id == "openai" or provider_id in config.PROVIDER_URLS:
+        from dataclasses import replace
+        definition = replace(definition, base_url=config.PROVIDER_URLS.get(provider_id, config.OPENAI_BASE_URL))
     return provider_type(definition, api_key, account_id=account_id, transport=transport)

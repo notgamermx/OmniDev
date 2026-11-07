@@ -3,7 +3,7 @@ from pathlib import Path
 
 def resolve_within_root(root: Path, requested_path: str | Path) -> Path:
     """Resolve a path and reject traversal outside the configured project root."""
-    resolved_root = root.resolve()
+    resolved_root = Path(root).resolve()
     candidate = (resolved_root / requested_path).resolve()
     try:
         candidate.relative_to(resolved_root)
