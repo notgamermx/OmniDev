@@ -1,0 +1,283 @@
+/**
+ * OmniDev Desktop - App Styles
+ */
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    background-color: #1a1a2e;
+    color: #eee;
+    overflow: hidden;
+}
+
+.app-container {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+}
+
+/* Sidebar */
+.sidebar {
+    width: 260px;
+    background-color: #16213e;
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    border-right: 1px solid #0f3460;
+}
+
+.app-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem;
+    border-bottom: 1px solid #0f3460;
+    margin-bottom: 0.5rem;
+}
+
+.logo-icon {
+    font-size: 1.5rem;
+}
+
+.nav-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.nav-item:hover {
+    background-color: #0f3460;
+}
+
+.nav-item.active {
+    background-color: #e94560;
+    color: #fff;
+}
+
+.nav-icon {
+    font-size: 1.25rem;
+    width: 24px;
+    text-align: center;
+}
+
+.sidebar-footer {
+    margin-top: auto;
+    padding-top: 1rem;
+    border-top: 1px solid #0f3460;
+}
+
+/* Main Content */
+.main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.header {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #0f3460;
+    background-color: #0f3460;
+}
+
+.header h1 {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.content-area {
+    flex: 1;
+    overflow: auto;
+    padding: 1rem;
+}
+
+/* Chat Component */
+.chat-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    margin-bottom: 1rem;
+}
+
+.message {
+    padding: 0.75rem 1rem;
+    border-radius: 0.75rem;
+    margin-bottom: 0.5rem;
+    max-width: 80%;
+}
+
+.message.user {
+    background-color: #e94560;
+    align-self: flex-end;
+}
+
+.message.agent {
+    background-color: #0f3460;
+    align-self: flex-start;
+}
+
+.message-content {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* File Explorer */
+.file-explorer {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.file-tree {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.file-node {
+    padding: 0.25rem 0.5rem;
+    cursor: pointer;
+    border-radius: 0.25rem;
+    transition: background-color 0.2s;
+}
+
+.file-node:hover {
+    background-color: #0f3460;
+}
+
+.file-node.selected {
+    background-color: #e94560;
+}
+
+/* Code Editor */
+.editor-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.file-info {
+    padding: 0.5rem 1rem;
+    background-color: #0f3460;
+    font-family: monospace;
+    font-size: 0.875rem;
+}
+
+/* Terminal Panel */
+.terminal-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.terminal-output {
+    flex: 1;
+    overflow-y: auto;
+    background-color: #0d1117;
+    padding: 1rem;
+    font-family: 'Fira Code', 'Consolas', monospace;
+    font-size: 14px;
+}
+
+.terminal-input {
+    display: flex;
+    padding: 0.5rem;
+    background-color: #0f3460;
+    border-top: 1px solid #0f3460;
+}
+
+.terminal-input input {
+    flex: 1;
+    background: none;
+    border: none;
+    color: #fff;
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+}
+
+/* Agent Monitor */
+.agent-monitor {
+    font-size: 0.875rem;
+}
+
+.agent-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem;
+    border-radius: 0.25rem;
+    margin-bottom: 0.25rem;
+}
+
+.agent-item.active {
+    background-color: #1a1a2e;
+}
+
+.agent-status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #6a0dad;
+}
+
+.agent-status-indicator.active {
+    background-color: #00ff00;
+}
+
+/* Dark theme colors */
+:root {
+    --bg-primary: #1a1a2e;
+    --bg-secondary: #16213e;
+    --bg-tertiary: #0f3460;
+    --border-color: #1a1a2e;
+    --text-primary: #eee;
+    --text-secondary: #888;
+    --accent: #e94560;
+    --success: #00ff00;
+}
+
+@media (max-width: 768px) {
+    .app-container {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+        height: 60px;
+        flex-direction: row;
+    }
+
+    .nav-list {
+        flex-direction: row;
+        justify-content: center;
+    }
+
+    .nav-item {
+        justify-content: center;
+        padding: 0.5rem;
+    }
+
+    .nav-label {
+        display: none;
+    }
+}

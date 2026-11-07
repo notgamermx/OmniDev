@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import health, system, projects, workspaces, chat, agents, tasks
+from app.api.v1.endpoints import health, system, projects, workspaces, chat, agents, tasks, memory, dashboard
 
 api_router = APIRouter()
 api_router.include_router(
@@ -37,4 +37,14 @@ api_router.include_router(
     tasks.router,
     prefix="/tasks",
     tags=["Tasks"],
+)
+api_router.include_router(
+    memory.router,
+    prefix="/memory",
+    tags=["Memory"],
+)
+api_router.include_router(
+    dashboard.router,
+    prefix="/dashboard",
+    tags=["Dashboard"],
 )

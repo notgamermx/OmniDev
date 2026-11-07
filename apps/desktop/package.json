@@ -1,0 +1,59 @@
+{
+  "name": "omnidev-desktop",
+  "version": "0.1.0",
+  "description": "OmniDev Desktop - Personal AI Development Environment",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "test": "echo \"No tests yet\"",
+    "dev": "concurrently \"npm: start\" \"watch\"",
+    "watch": "echo \"Watch mode not implemented\""
+  },
+  "dependencies": {
+    "axios": "^1.7.2"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^24.6.0",
+    "concurrent": "^0.1.2"
+  },
+  "build": {
+    "appId": "com.omnidev.desktop",
+    "productName": "OmniDev",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "!**/*.pyc",
+      "!**/*.pyo",
+      "!**/*.swp",
+      "!**/*.swo",
+      "!**/*.egg-info",
+      "**/.git/**",
+      "**/node_modules/**",
+      "!**/node_modules/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend",
+        "to": "backend",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  },
+  "author": {
+    "name": "OmniDev",
+    "email": "dev@omnidev.local"
+  },
+  "license": "MIT"
+}
