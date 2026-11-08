@@ -155,19 +155,34 @@ def test_harness_install_run_scope_and_permissions(client, tmp_path):
     )
     assert client.post("/api/v1/directories", json={"path": "demo"}).status_code == 200
     prompt = 'quote " ; & literal $(echo unsafe)'
-    result = client.post(url + "/run", json={"prompt": prompt, "path": "demo"}).json()
+    assert client.post(url + "/run", json={"prompt": prompt, "path": "demo"}).status_code == 403
+    assert client.post(url + "/install").status_code == 403
+    assert not (settings.PROJECT_ROOT / "demo/result.txt").exists()
+    result = client.post(url + "/run", json={"prompt": prompt, "path": "demo", "approve_host_execution": True}).json()
     assert result["exit_code"] == 0 and prompt in result["output"]
     assert (settings.PROJECT_ROOT / "demo/result.txt").read_text() == prompt
     assert (
         client.post(
-            url + "/run", json={"prompt": "hi", "path": "../../outside"}
+            url + "/run", json={"prompt": "hi", "path": "../../outside", "approve_host_execution": True}
         ).status_code
         == 403
     )
-    assert client.post(url + "/install").json()["exit_code"] == 0
+    assert client.post(url + "/install", json={"approve_host_execution": True}).json()["exit_code"] == 0
     assert (
         client.post("/api/v1/directories", json={"path": "../../outside"}).status_code
         == 403
     )
     client.put("/api/v1/workspace/execution", json={"enabled": False})
     assert client.post(url + "/run", json={"prompt": "hello"}).status_code == 403
+
+
+def test_unapproved_harness_never_launches_process(client, monkeypatch):
+    from unittest.mock import AsyncMock
+    launch = AsyncMock()
+    monkeypatch.setattr("app.api.v1.endpoints.connectors.run_exec", launch)
+    monkeypatch.setattr(settings, "TERMINAL_ENABLED", True)
+    client.put("/api/v1/connectors/harnesses/test", json={"name": "x", "command": "whoami", "args": ["{prompt}"], "install_command": ["whoami"]})
+    for body in ({}, {"approve_host_execution": False}):
+        assert client.post("/api/v1/connectors/harnesses/test/install", json=body).status_code == 403
+        assert client.post("/api/v1/connectors/harnesses/test/run", json={"prompt": "hello", **body}).status_code == 403
+    launch.assert_not_awaited()

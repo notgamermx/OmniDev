@@ -1,3 +1,4 @@
+import pytest
 from argparse import Namespace
 import importlib.util
 from pathlib import Path
@@ -5,6 +6,25 @@ from pathlib import Path
 spec = importlib.util.spec_from_file_location('omnidev_cli', Path(__file__).resolve().parents[2] / 'cli' / 'main.py')
 cli = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cli)
+
+
+@pytest.mark.parametrize("action,paused", [("pause", True), ("resume", False)])
+def test_cli_controls_existing_task_worker(monkeypatch, action, paused):
+    import httpx
+    import json
+    import app.cli as application_cli
+
+    original_client = httpx.Client
+    sent = []
+    def handler(request):
+        sent.append(request)
+        return httpx.Response(200, json={"status": "paused" if paused else "running"})
+    monkeypatch.setattr(application_cli.httpx, "Client", lambda **kwargs: original_client(**kwargs, transport=httpx.MockTransport(handler)))
+    monkeypatch.setattr("sys.argv", ["omnidev", "tasks", action, "7"])
+    assert application_cli.main() == 0
+    assert sent[-1].method == "POST"
+    assert sent[-1].url.path == "/api/v1/tasks/7/pause"
+    assert json.loads(sent[-1].content) == {"paused": paused}
 
 
 def test_memory_subcommands_dispatch(capsys):
@@ -81,3 +101,28 @@ def test_integrated_model_cli_dispatch(monkeypatch, tmp_path):
     monkeypatch.setattr("sys.argv",["omnidev","models","save-pool","--file",str(pool)])
     assert application_cli.main()==0
     assert requests[-1].method=="PUT" and requests[-1].url.path=="/api/v1/models/pool"
+
+
+@pytest.mark.parametrize("action", ["install", "run"])
+def test_harness_cli_requires_explicit_host_approval(monkeypatch, action):
+    import json
+    import httpx
+    import app.cli as application_cli
+    original_client = httpx.Client
+    sent = []
+
+    def handler(request):
+        sent.append(request)
+        return httpx.Response(200, json={"output": "ok", "exit_code": 0})
+
+    monkeypatch.setattr(application_cli.httpx, "Client", lambda **kwargs: original_client(**kwargs, transport=httpx.MockTransport(handler)))
+    argv = ["omnidev", "connectors", action, "harnesses", "test"]
+    if action == "run":
+        argv.extend(["--prompt", "do work"])
+    monkeypatch.setattr("sys.argv", argv)
+    with pytest.raises(SystemExit) as exc:
+        application_cli.main()
+    assert exc.value.code == 2 and not sent
+    monkeypatch.setattr("sys.argv", argv + ["--approve-host-execution"])
+    assert application_cli.main() == 0
+    assert json.loads(sent[-1].content)["approve_host_execution"] is True

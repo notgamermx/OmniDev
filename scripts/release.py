@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument("--output", type=Path, default=ROOT / "dist")
 args = parser.parse_args()
+subprocess.run([sys.executable, str(ROOT / "scripts/version.py")], check=True)
 npm = shutil.which("npm")
 if not npm:
     raise SystemExit("Install Node.js and npm before building.")

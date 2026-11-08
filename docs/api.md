@@ -1,5 +1,7 @@
 <!-- coderabbit-ai-generated:v1 -->
 
+<!-- coderabbit-ai-generated-section:v1:500d56ef9df0f417176764209689c16382650ccd5ba0536fd68bb6a8f187ba92 -->
+
 <!-- coderabbit-ai-generated-section:v1:062aaf58160308722e216a944279c39e53111862ef13fe767687ceda310deb97 -->
 
 # API
@@ -20,6 +22,15 @@ Run `omnidev serve` and open `/docs` for request/response schemas. API paths sta
 | `/workspace`, `/dashboard` | Workspace capabilities and status |
 
 `POST /tasks/{id}/execute` and `/run` accept `{ "project_root": "." }` relative to the configured root. Task creation accepts `verification_command`. Session memory list/get/delete accept a `session_id` query; writes accept it in the JSON body.
+
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+## Task lifecycle controls
+
+`POST /tasks/{id}/run` atomically queues pending work. Only one worker can claim it. `POST /tasks/{id}/pause` accepts `{"paused":true}` to pause after the current operation, and `{"paused":false}` to resume the existing worker. Invalid pause/resume states return HTTP 409. `DELETE /tasks/{id}` cancels execution; it does not delete history. Task deletion uses `DELETE /tasks/` with the task ID as the JSON body.
+
+Task detail includes the selected model, planning step count, conservative token-budget reservations and persisted execution steps. State transitions appear as `kind="state"` steps. Interrupted queued/running/verifying/paused tasks fail on restart with an audit event; side effects are not replayed automatically.
 
 
 <!-- /coderabbit-ai-generated:v1 -->

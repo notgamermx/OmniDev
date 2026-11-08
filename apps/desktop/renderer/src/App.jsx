@@ -1,24 +1,23 @@
 import React, { useEffect, useState } from "react";
-import { request, streamChat, connection } from "./services/api";
+import { request, streamChat, connection, normalizeEngineUrl } from "./services/api";
 import Connectors from "./Connectors";
 import Models from "./Models";
 import ModelPicker from "./ModelPicker";
+import logo from "./assets/logo.svg";
 import ResponseContent from "./ResponseContent";
 import { downloadText } from "./services/download";
 import { desktopConnection } from "./services/desktop";
 import Personalization, { loadAppearance } from "./Personalization";
-const icons = {
-  Chat: "✧",
-  Agents: "♧",
-  Tasks: "☷",
-  Files: "▱",
-  Terminal: "⌘",
-  Memory: "◷",
-  Connectors: "⌁",
-  Models: "✺",
-  Connection: "⊙",
-  Settings: "⚙",
+const iconPaths = {
+  Chat: "M4 4h16v12H9l-5 4z", Tasks: "m5 6 2 2 4-4M13 6h7M5 13h15M5 19h15",
+  Agents: "M8 4h8v5H8zM4 15h5v5H4zM15 15h5v5h-5zM12 9v3M6 15v-3h12v3",
+  Files: "M3 6h7l2 3h9v12H3z", Terminal: "m5 6 5 6-5 6M13 18h6",
+  Memory: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5", Models: "M12 3 3 8l9 5 9-5zM3 12l9 5 9-5M3 16l9 5 9-5",
+  Connectors: "m8 3 4 4-5 5-4-4zM17 12l4 4-5 5-4-4zM9 15l6-6", Connection: "M4 8a12 12 0 0 1 16 0M7 12a7 7 0 0 1 10 0M10 16a3 3 0 0 1 4 0M12 20h.01",
+  Settings: "M4 7h16M4 17h16M8 4v6M16 14v6",
 };
+function Icon({ name }) { return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={iconPaths[name]} /></svg>; }
+const label = (view) => ({ Chat: "Chat", Tasks: "Activity", Models: "Models & keys" }[view] || view);
 const views = [
   "Chat",
   "Agents",
@@ -34,6 +33,7 @@ const views = [
 export default function App() {
   const [appearance, setAppearance] = useState(loadAppearance);
   const [threadSearch, setThreadSearch] = useState("");
+  const [showThreads, setShowThreads] = useState(false);
   const [attachment, setAttachment] = useState(null);
   useEffect(() => {
     localStorage.setItem("omnidev-appearance", JSON.stringify(appearance));
@@ -42,8 +42,8 @@ export default function App() {
       element.dataset[key] = value;
   }, [appearance]);
   const [dialog, setDialog] = useState(null);
-  function ask(title, value = "") {
-    return new Promise((resolve) => setDialog({ title, value, resolve }));
+  function ask(title, value = "", description = "") {
+    return new Promise((resolve) => setDialog({ title, value, description, resolve }));
   }
 
   const [view, setView] = useState("Chat"),
@@ -90,6 +90,7 @@ export default function App() {
     }
   }
   async function refresh() {
+    await request("/health/").then(() => setOnline(true)).catch(error => { setOnline(false); throw error; });
     const [p, a, t, s, j, w] = await Promise.all([
       request("/chat/providers/"),
       request("/agents/?enabled_only=false"),
@@ -105,7 +106,6 @@ export default function App() {
     setProjects(j.projects);
     setRoot(w.root);
     setTerminal(w.terminal_enabled);
-    setOnline(true);
   }
   useEffect(() => {
     if (window.omnidevStartupError) {
@@ -113,6 +113,9 @@ export default function App() {
       return;
     }
     act(refresh);
+    const reconnect = () => refresh().catch((e) => setError(e.message));
+    window.addEventListener("online", reconnect);
+    return () => window.removeEventListener("online", reconnect);
   }, []);
   useEffect(() => {
     if (view !== "Tasks") return;
@@ -242,6 +245,7 @@ export default function App() {
         <div className="modal">
           <form
             role="dialog"
+            className={dialog.description ? "host-approval" : undefined}
             aria-modal="true"
             aria-label={dialog.title}
             onSubmit={(event) => {
@@ -251,6 +255,7 @@ export default function App() {
             }}
           >
             <h2>{dialog.title}</h2>
+            {dialog.description && <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{dialog.description}</p>}
             {dialog.value !== null && (
               <input
                 autoFocus
@@ -278,7 +283,7 @@ export default function App() {
       )}
       <aside>
         <div className="brand">
-          <span>✦</span> OmniDev <small>WORKSPACE</small>
+          <img src={logo} alt="" width="28" height="28" /> <strong>OmniDev</strong>
         </div>
         <button
           className="sidebar-search"
@@ -305,46 +310,21 @@ export default function App() {
               }}
             >
               <span className="nav-icon" aria-hidden="true">
-                {icons[v]}
+                <Icon name={v} />
               </span>
-              {v === "Chat" ? "Ask AI" : v}
+              {label(v)}
             </button>
           ))}
         </nav>
-        <div className="sidebar-note">
-          <span>✧</span>
-          <strong>A little help, a lot of possibility.</strong>
-          <p>Your ideas. Your models. Your workspace.</p>
-          <button onClick={() => setView("Connectors")}>
-            Connect your tools ↗
-          </button>
-        </div>
-        <div className="connection">
-          <i className={online ? "online" : ""} />{" "}
-          {online ? "Connected" : "Disconnected"}
-          <small>{root || "Connect to your engine"}</small>
-        </div>
+        <button className="connection" onClick={() => setView("Connection")}>
+          <i className={online ? "online" : ""} />
+          <span>{online ? "Engine connected" : "Engine offline"}</span>
+          <span aria-hidden="true">↗</span>
+        </button>
       </aside>
       <main>
-        <div className="breadcrumb">
-          <span>Workspace</span>
-          <span> / </span>
-          <strong>{view === "Chat" ? "Ask AI" : view}</strong>
-          <button
-            aria-label="Toggle theme"
-            title="Toggle light and dark"
-            onClick={() =>
-              setAppearance({
-                ...appearance,
-                theme: appearance.theme === "dark" ? "light" : "dark",
-              })
-            }
-          >
-            ◐
-          </button>
-        </div>
         <header>
-          <h1>{view === "Chat" ? "Ask AI" : view}</h1>
+          <h1>{label(view)}</h1>
           {busy && <small role="status">Working…</small>}
           <select
             aria-label="Project"
@@ -366,6 +346,7 @@ export default function App() {
             }
           })}
           {button("Refresh", refresh)}
+          <button className="theme-toggle" aria-label="Toggle theme" title="Toggle light and dark" onClick={() => setAppearance({ ...appearance, theme: appearance.theme === "dark" ? "light" : "dark" })}>◐</button>
         </header>
         {error && (
           <div role="alert" className="error">
@@ -376,88 +357,48 @@ export default function App() {
         )}
         <section className={view === "Chat" ? "chat-section" : ""}>
           {view === "Chat" && (
-            <div className="chat">
-              <div className="toolbar chat-tools">
-                <input
-                  id="thread-search"
-                  aria-label="Search threads"
-                  placeholder="⌕  Search threads"
-                  value={threadSearch}
-                  onChange={(e) => setThreadSearch(e.target.value)}
-                />
-                <select
-                  aria-label="Conversation"
-                  disabled={busy}
-                  value={session}
-                  onChange={(e) =>
-                    act(async () => {
-                      setSession(e.target.value);
-                      setMessages(
-                        e.target.value
-                          ? (await request(`/sessions/${e.target.value}`))
-                              .messages
-                          : [],
-                      );
-                    })
-                  }
-                >
-                  <option value="">New conversation</option>
-                  {sessions
-                    .filter((s) =>
-                      s.name.toLowerCase().includes(threadSearch.toLowerCase()),
-                    )
-                    .map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                </select>
-                {button("Create folder", async () => {
-                  const path = await ask("Folder path relative to workspace");
-                  if (path) await request("/directories", "POST", { path });
-                })}
-                <button
-                  className="primary"
-                  disabled={busy}
-                  onClick={() => {
-                    setSession("");
-                    setMessages([]);
-                    setInput("");
-                  }}
-                >
-                  + New chat
-                </button>
-                {messages.length > 0 && button("↓ Download chat", () => downloadText("omnidev-conversation.md", messages.map((m) => `## ${m.role}\n\n${m.content}`).join("\n\n"), "text/markdown;charset=utf-8"))}
-                {session &&
-                  button("Delete conversation", async () => {
-                    await request(`/sessions/${session}`, "DELETE");
-                    setSession("");
-                    setMessages([]);
-                    await refresh();
-                  })}
+            <div className={"chat-workspace" + (showThreads ? " threads-open" : "")}>
+              <div className="conversation-sidebar" role="navigation" aria-label="Conversations">
+                <div className="conversation-sidebar-heading"><strong>Conversations</strong><span>{sessions.length}</span><button className="close-threads" aria-label="Close conversations" onClick={() => setShowThreads(false)}>×</button></div>
+                <button className="new-conversation" disabled={busy} onClick={() => { setSession(""); setMessages([]); setInput(""); setShowThreads(false); }}>+ New conversation</button>
+                <input id="thread-search" aria-label="Search threads" placeholder="Search conversations…" value={threadSearch} onChange={e => setThreadSearch(e.target.value)} />
+                <div className="conversation-list">
+                  {sessions.filter(s => s.name.toLowerCase().includes(threadSearch.toLowerCase())).map(s => <button key={s.id} className={String(session) === String(s.id) ? "selected" : ""} aria-current={String(session) === String(s.id) ? "page" : undefined} disabled={busy} onClick={() => act(async () => { const saved = await request(`/sessions/${s.id}`); setSession(s.id); setMessages(saved.messages); setShowThreads(false); })}><Icon name="Chat" /><span>{s.name}</span></button>)}
+                  {!sessions.length && <p>Your conversations will appear here.</p>}
+                  {!!sessions.length && !sessions.some(s => s.name.toLowerCase().includes(threadSearch.toLowerCase())) && <p>No matching conversations.</p>}
+                </div>
+                <button className="workspace-files" onClick={() => { setView("Files"); act(() => listFiles(directory)); }}><Icon name="Files" /><span>Browse workspace files</span><span>↗</span></button>
               </div>
+              <div className="chat">
+                <div className="conversation-heading">
+                  <button className="threads-toggle" aria-label="Toggle conversations" aria-expanded={showThreads} onClick={() => setShowThreads(!showThreads)}><Icon name="Chat" /></button>
+                  <span>{sessions.find(s => String(s.id) === String(session))?.name || "New conversation"}</span>
+                  <div className="conversation-actions">
+                    {button("Create folder", async () => { const path = await ask("Folder path relative to workspace"); if (path) await request("/directories", "POST", { path }); })}
+                    {messages.length > 0 && button("↓ Download chat", () => downloadText("omnidev-conversation.md", messages.map(m => `## ${m.role}\n\n${m.content}`).join("\n\n"), "text/markdown;charset=utf-8"))}
+                    {session && button("Delete conversation", async () => { if (!(await ask("Delete this conversation?", null))) return; await request(`/sessions/${session}`, "DELETE"); setSession(""); setMessages([]); await refresh(); })}
+                  </div>
+                </div>
               <div className="messages">
                 {!messages.length && (
-                  <div className="empty">
-                    <div className="orbital" aria-hidden="true">
-                      <div className="orbital-core">✦</div>
-                      <div className="orbit one" />
-                      <div className="orbit two" />
-                      <div className="orbit three" />
+                  <div className="conversation-empty">
+                    <span className="workspace-caption"><span className="workspace-mark">/</span> {projects.find(p => String(p.id) === String(project))?.name || "Your workspace"}</span>
+                    <h2>Start a conversation.</h2>
+                    <p>Bring a question, a piece of code, or your next change.</p>
+                    <div className="starter-list">
+                      {[
+                        ["Explain this project", "Find your way around the codebase."],
+                        ["Plan a feature", "Break an idea into useful steps."],
+                        ["Review my code", "Get a second look at a change."],
+                      ].map(([text, detail], i) => <button key={text} onClick={() => { setInput(text); document.querySelector('[aria-label="Message"]')?.focus(); }}><span className="starter-number">0{i + 1}</span><span><strong>{text}</strong><small>{detail}</small></span><span aria-hidden="true">↗</span></button>)}
                     </div>
-                    <span className="eyebrow">
-                      A LITTLE SPARK. ENDLESS POSSIBILITIES.
-                    </span>
-                    <h2>
-                      Hello, <span>what’s on your mind?</span>
-                    </h2>
-                    <p>From a first thought to your next big thing.</p>
+                    <button className="text-link" onClick={() => setView("Tasks")}>Run an agent task <span>→</span></button>
                   </div>
                 )}
                 {messages.map((m, i) => (
                   <article className={"message " + m.role} key={i}>
                     <div className="message-heading">
-                      <small>{m.role === "assistant" ? "✦ OmniDev" : "You"}</small>
+                      <small>{m.role === "assistant" ? "OmniDev" : "You"}</small>
                       <button type="button" className="download-action" disabled={busy || !m.content}
                         onClick={() => act(() => downloadText(`omnidev-${m.role}-${i + 1}.md`, m.content, "text/markdown;charset=utf-8"))}>↓ Download</button>
                     </div>
@@ -466,18 +407,9 @@ export default function App() {
                 ))}
               </div>
               <form onSubmit={send} className="compose">
-                <div className="compose-heading">
-                  <span>✦</span>{" "}
-                  {appearance.mode === "plan"
-                    ? "Let’s make a plan"
-                    : appearance.mode === "code"
-                      ? "Let’s build something"
-                      : "Ask me anything"}
-                  <small> — a little clarity goes a long way.</small>
-                </div>
                 <textarea
                   aria-label="Message"
-                  placeholder="Ask a question or describe an idea…"
+                  placeholder="Describe a change, ask about your code, or paste an error…"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   disabled={busy}
@@ -546,9 +478,9 @@ export default function App() {
                     {busy ? "···" : "↑"}
                   </button>
                 </div>
-              </form>
-              <div className="model-bar">
+                <div className="composer-models">
                 <ModelPicker
+                  onSetup={() => setView("Models")}
                   providers={providers}
                   provider={provider}
                   model={model}
@@ -556,7 +488,9 @@ export default function App() {
                   onModel={setModel}
                   busy={busy}
                 />
-                <small>Ctrl + Enter to send</small>
+                </div>
+              </form>
+              <small className="compose-hint">Ctrl + Enter to send · Conversations saved locally</small>
               </div>
             </div>
           )}
@@ -586,6 +520,7 @@ export default function App() {
                   <input name="name" required />
                 </label>
                 <ModelPicker
+                  onSetup={() => setView("Models")}
                   providers={providers}
                   provider={provider}
                   model={model}
@@ -709,22 +644,32 @@ export default function App() {
                 {task ? (
                   <>
                     <h2>{task.task.title}</h2>
-                    <p>{task.task.status}</p>
-                    {["pending", "running"].includes(task.task.status) &&
+                    <div className="activity-summary" role="status">
+                      <span className="status-tag">{task.task.status}</span>
+                      <span>{agents.find(a => a.id === task.task.agent_id)?.name || "Agent"}</span>
+                      <span>{task.task.model || agents.find(a => a.id === task.task.agent_id)?.model}</span>
+                      <span>{task.task.step_count || 0} planning steps</span>
+                      <span>{task.task.token_spent || 0} budget units reserved</span>
+                    </div>
+                    <details className="permission-panel"><summary>Execution permissions</summary><p>Files: {root}. Shell: {terminal ? "Docker sandbox, network disabled" : "disabled"}. Harnesses: separate host approval required.</p><p>Assigned tools: {(agents.find(a => a.id === task.task.agent_id)?.tool_names || []).join(", ") || "none"}. Existing verification files are protected.</p></details>
+                    {["pending", "queued", "running", "verifying", "paused"].includes(task.task.status) &&
                       button("Cancel", async () => {
                         await request(`/tasks/${task.task.id}`, "DELETE");
                         setTask(await request(`/tasks/${task.task.id}`));
                       })}
+                    {["running", "paused"].includes(task.task.status) && button(task.task.status === "paused" ? "Resume" : "Pause after operation", async () => {
+                      await request(`/tasks/${task.task.id}/pause`, "POST", { paused: task.task.status !== "paused" });
+                      setTask(await request(`/tasks/${task.task.id}`));
+                    })}
                     {button("↓ Download task", () => downloadText("omnidev-task.json", JSON.stringify(task, null, 2), "application/json"))}
                     <pre>{task.task.result || task.task.error}</pre>
-                    {task.steps.map((s, i) => (
-                      <article key={i}>
-                        <small>
-                          Step {s.step_index} · {s.kind} {s.tool_name}
-                        </small>
+                    <h3>Execution history</h3>
+                    <div className="activity-timeline">{task.steps.map((s, i) => (
+                      <details key={i} open={i === task.steps.length - 1}>
+                        <summary><span>{s.kind}</span> {s.tool_name || (s.kind === "state" ? "State transition" : "Planning")} <time>{new Date(s.created_at).toLocaleTimeString()}</time></summary>
                         <pre>{s.content}</pre>
-                      </article>
-                    ))}
+                      </details>
+                    ))}</div>
                   </>
                 ) : (
                   <p className="empty">Select a task to follow its progress.</p>
@@ -925,7 +870,7 @@ export default function App() {
             <Models act={act} refresh={refresh} busy={busy} />
           )}
           {view === "Connectors" && (
-            <Connectors act={act} refresh={refresh} busy={busy} />
+            <Connectors act={act} refresh={refresh} busy={busy} ask={ask} />
           )}
           {view === "Settings" && (
             <Personalization value={appearance} onChange={setAppearance} />
@@ -935,14 +880,16 @@ export default function App() {
               className="form"
               onSubmit={(e) => {
                 e.preventDefault();
+                let normalized;
+                try { normalized = normalizeEngineUrl(url); } catch (error) { setError(error.message); return; }
                 if (
                   desktopConnection &&
-                  url.replace(/\/$/, "") === desktopConnection.url
+                  normalized === desktopConnection.url
                 ) {
                   localStorage.removeItem("omnidev-url");
                   sessionStorage.removeItem("omnidev-token");
                 } else {
-                  localStorage.setItem("omnidev-url", url.replace(/\/$/, ""));
+                  localStorage.setItem("omnidev-url", normalized);
                   sessionStorage.setItem("omnidev-token", token);
                 }
                 act(async () => {
@@ -976,7 +923,7 @@ export default function App() {
                   autoComplete="off"
                 />
               </label>
-              <button>Connect</button>
+              <div className="toolbar"><button disabled={busy}>Connect</button><button type="button" onClick={() => { localStorage.removeItem("omnidev-url"); sessionStorage.removeItem("omnidev-token"); setUrl(connection().url); setToken(""); act(refresh); }}>Use default engine</button></div>
               <label className="execution-toggle">
                 <input
                   type="checkbox"
@@ -993,8 +940,9 @@ export default function App() {
                 session
               </label>
               <small>
-                Commands run with your OS account permissions. This setting
-                resets to the engine configuration when it restarts.
+                Terminal commands run in Docker. External harnesses use your OS
+                account and require separate approval for each operation. This
+                setting resets when the engine restarts.
               </small>
               <p className="muted">
                 The token is kept for this browser session. Provider keys stay

@@ -1,12 +1,11 @@
 """Task service for managing task lifecycle."""
 
-import json
 import logging
+import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from contextlib import asynccontextmanager
 
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, update
 
 from app.database.session import SessionLocal
 from app.models.agent import Agent, Task, TaskStep
@@ -96,7 +95,7 @@ class TaskService:
             ).scalar_one_or_none()
             if not task:
                 raise ValueError(f"Task {task_id} not found")
-            if task.status != TaskStatus.PENDING.value:
+            if task.status not in {"pending", "queued"}:
                 raise ValueError(
                     f"Task {task_id} cannot start from status '{task.status}'"
                 )
@@ -108,12 +107,17 @@ class TaskService:
         except Exception:
 
             def fail_pending(db):
-                task = db.get(Task, task_id)
-                if task is not None and task.status in {"pending", "running"}:
-                    task.status = "failed"
-                    task.error = "Task could not start; check the agent and provider configuration"
-                    task.updated_at = datetime.now(timezone.utc).isoformat()
-                    db.commit()
+                # A losing starter must never fail the worker that claimed it.
+                current = db.get(Task, task_id)
+                if current is None or current.status not in {"pending", "queued"}:
+                    return
+                before = current.status
+                changed = db.execute(update(Task).where(Task.id == task_id, Task.status == before).values(
+                    status="failed", error="Task could not start; check the agent and provider configuration",
+                    updated_at=datetime.now(timezone.utc).isoformat())).rowcount
+                if changed:
+                    db.add(TaskStep(task_id=task_id, step_index=current.step_count, kind="state", content=json.dumps({"from": before, "to": "failed", "reason": "start_failed"}), created_at=datetime.now(timezone.utc).isoformat()))
+                db.commit()
 
             self._with_db(fail_pending)
             raise
@@ -163,7 +167,7 @@ class TaskService:
             result = db.execute(
                 select(TaskStep)
                 .where(TaskStep.task_id == task_id)
-                .order_by(TaskStep.step_index)
+                .order_by(TaskStep.step_index, TaskStep.id)
             )
             return result.scalars().all()
 
@@ -182,7 +186,7 @@ class TaskService:
             steps_result = db.execute(
                 select(TaskStep)
                 .where(TaskStep.task_id == task_id)
-                .order_by(TaskStep.step_index)
+                .order_by(TaskStep.step_index, TaskStep.id)
             )
             steps = steps_result.scalars().all()
 
@@ -198,6 +202,9 @@ class TaskService:
                     "result": task.result,
                     "error": task.error,
                     "max_steps": task.max_steps,
+                    "step_count": task.step_count,
+                    "model": db.get(Agent, task.agent_id).model if db.get(Agent, task.agent_id) else None,
+                    "token_spent": (task.task_config or {}).get("token_spent", 0),
                     "created_at": task.created_at,
                     "updated_at": task.updated_at,
                 },

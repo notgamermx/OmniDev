@@ -1,33 +1,33 @@
 <!-- coderabbit-ai-generated:v1 -->
 
-# Model gateways and harness connectors
+<!-- coderabbit-ai-generated-section:v1:2ea63e5dda18fb4ebbc4f56aaf5a573d2600daff7f8b9b4718e615999955a207 -->
 
-<!-- coderabbit-ai-generated:v1 -->
+# Models, providers and harnesses
 
-<!-- coderabbit-ai-generated-section:v1:53c22a574c726c32467cbfa18c7e5631915e0ad97afecd645add740aac7e15b3 -->
+## Built-in model setup
 
-## Built-in providers, models and routing
+Provider management and fallback routing run inside the OmniDev engine. No separate FreeLLMAPI installation or gateway process is required.
 
-OmniDev includes its own provider management and model router in the Python engine. No separate FreeLLMAPI installation or gateway process is required.
+1. Open **Models & keys**, choose a provider and save your key. Cloudflare also needs an account ID. Blank key input preserves a saved key.
+2. Available models load for configured providers. Refresh the catalog when needed, or enter an exact model ID if discovery is unavailable.
+3. In **Chat** or **Agents**, select a configured provider and model. Unconfigured cloud providers appear only in setup. Ollama remains a local option; its service and model must be installed separately.
+4. Optionally add models to the built-in router, set their fallback order, and choose **Automatic routing** in Chat. Routing becomes available when at least one enabled route has a configured provider.
 
-1. Open **Models** from the sidebar and choose a provider. Built-in adapters cover Gemini, Groq, OpenRouter, Ollama, Mistral, Cloudflare, Cohere, NVIDIA NIM, Cerebras, Hugging Face, DeepInfra, Together, SambaNova and OpenAI.
-2. Enter your provider API key and save it. Cloudflare also requires an account ID. Keys are encrypted in the engine home; existing `.env` keys continue to work. Ollama needs a separately running local model service but no cloud key.
-3. Click **Load available models**, filter the live catalog, select a model and click **Add to built-in router**. Model IDs can also be entered manually if the provider cannot list them. OpenRouter's optional free filter uses the catalog's input/output pricing; other providers' free-tier availability depends on your account and quotas.
-4. Add other models/providers and arrange the fallback order. Enable or disable individual entries.
-5. In Chat or Agents choose **OmniDev · built-in router → Automatic**. Alternatively, choose a provider and a specific model from its dropdown. The **Models** refresh button reloads the current catalog. These controls are shared by desktop and web.
+OpenRouter's free filter uses catalog input/output pricing. Other providers' free-tier availability depends on your account and quotas. OmniDev includes no shared cloud key or unlimited quota.
 
-The router tries enabled, configured models in your saved order. A rate limit puts that model on a 30-second cooldown; another provider error puts it on a 5-second cooldown. Models on cooldown are skipped. If a stream has already emitted an event, OmniDev reports an interruption instead of splicing in a different response. Cooldowns are in memory and reset at engine restart. There are no bundled cloud keys or unlimited free quotas.
+The router tries enabled, configured routes in saved order. Rate limits place a route on a 30-second cooldown; other provider errors use a 5-second cooldown. Cooldowns reset on restart. After a stream emits an event, a failure is reported without switching providers mid-response. Tool actions are not automatically retried by the router.
 
-### CLI built-in setup
+### CLI setup
 
-Create a private JSON file outside Git containing `{"api_key":"YOUR_PROVIDER_KEY"}` and run:
+Create a private JSON file outside Git containing `{"api_key":"YOUR_PROVIDER_KEY"}`:
 
 ```text
 omnidev models setup --provider groq --file credentials.json
 omnidev models list --provider groq
+omnidev chat --provider groq --model YOUR_CHOSEN_MODEL "Hello"
 ```
 
-Put the model IDs you chose into a private pool file:
+For optional automatic routing, save a private pool file:
 
 ```json
 {"routes":[{"provider":"groq","model":"YOUR_CHOSEN_MODEL","enabled":true}]}
@@ -39,56 +39,53 @@ omnidev models pool
 omnidev chat --interactive
 ```
 
-Chat defaults to the built-in router and `auto`. Direct model selection remains available with `--provider PROVIDER --model MODEL`. Remove local credential input files after setup if you do not need them.
+Remove local credential input files when no longer needed. Keys are encrypted in the engine home with a locally generated key. Existing environment keys continue to work. List responses do not return secrets. Back up the complete engine home to preserve decryptability. OS account access can expose both encrypted values and their decryption key.
 
-## Optional external gateways
+## Optional gateways
 
-Existing custom connections remain supported under **Connectors**. They are optional for users who already run a compatible server, including FreeLLMAPI, LM Studio or another gateway. Enter its API base URL including `/v1`, its key if required and a default model. Remote URLs require HTTPS; HTTP is accepted on loopback. FreeLLMAPI's [API reference](https://github.com/tashfeenahmed/freellmapi/blob/main/docs/en/api/01-rest-api.md) documents its own model names and routing strategies.
+Use **Connectors** for an existing OpenAI-compatible gateway such as FreeLLMAPI or LM Studio. Supply its API base URL including `/v1`, required key and default model. Remote URLs require HTTPS; HTTP is accepted on loopback. These connections are optional.
 
-
-
-<!-- /coderabbit-ai-generated:v1 -->## CLI model connection
-
-Save this JSON to a local private file outside your Git checkout:
+Example private gateway file:
 
 ```json
-{"name":"FreeLLMAPI","base_url":"http://127.0.0.1:3001/v1","model":"auto","api_key":"YOUR_UNIFIED_KEY"}
+{"name":"Local gateway","base_url":"http://127.0.0.1:3001/v1","model":"auto","api_key":"YOUR_GATEWAY_KEY"}
 ```
 
 ```text
-omnidev connectors save providers custom_freellmapi --file connection.json
-omnidev connectors models providers custom_freellmapi
-omnidev chat --provider custom_freellmapi --model auto "Hello"
+omnidev connectors save providers custom_local --file connection.json
+omnidev connectors models providers custom_local
+omnidev chat --provider custom_local --model auto "Hello"
 omnidev connectors list
-omnidev connectors delete providers custom_freellmapi
+omnidev connectors delete providers custom_local
 ```
 
-Saved connector definitions are encrypted using a locally generated Fernet key in the engine home. OS account permissions protect the key. List responses never return API keys. Blank key input preserves an existing key; delete the connection to remove it. Back up the complete engine home to preserve decryptability. These protections do not defend against someone with access to your OS account.
+## Trusted external harnesses
 
-## Bring your own harness
-
-A harness connector launches an installed noninteractive command and captures its output and exit code. It is a command adapter, not an implementation of every harness's interactive protocol. Supply the exact executable and argument array documented by your harness. Include `{prompt}` in an argument. Arguments are passed directly without assembling a shell command.
-
-For example, a custom Python harness could be:
+A harness connector runs an installed noninteractive command and captures its output and exit code. Supply the executable and argument array from the harness's own documentation, with `{prompt}` in an argument. Use its own terminal to complete login first. Interactive protocols and streaming terminals are not adapted by this connector.
 
 ```json
 {"name":"My harness","command":"python","args":["C:/Tools/my_harness.py","--prompt","{prompt}"],"install_command":[]}
 ```
 
-Use a full executable path when it is not on PATH. You can register any installed harness that supports a noninteractive task argument, including a locally installed coding CLI. OmniDev does not modify its configuration or bypass its login flow. Use its own terminal to log in first.
+Use a full executable path when it is not on PATH. The optional install command is a JSON array such as `["npm","install","--global","YOUR_SELECTED_PACKAGE"]`. Prerequisites must already be installed. On Windows, prefer native executables or `node`/`python` entrypoints; batch shims reject shell metacharacters in arguments.
 
-The optional **install command** is a JSON argument array such as `["npm", "install", "--global", "YOUR_SELECTED_PACKAGE"]`; enter the actual command from the harness's official instructions. **Install** runs it only when you click it. Node/npm, Python or other prerequisites must already be installed. Installations and harnesses have the permissions of your OS account; they are not sandboxed by the working directory.
+Enable **Connection → Allow terminal and external harness execution**, or `TERMINAL_ENABLED=true`. This enables the routes; every harness install and run additionally requires approval. The UI shows the exact command and host-permission warning. Approval applies to one request and is not saved.
 
-Enable **Connection → Allow terminal and external harness execution** for this engine session, or set `TERMINAL_ENABLED=true` in the engine `.env`. The default remains off. This controls the terminal, shell tool and harness routes together. Runs use a directory inside `PROJECT_ROOT`, retain up to 1 MB of output and time out after 120 seconds. A timed-out install can be retried manually using the harness's official terminal instructions. On Windows, prefer native `.exe` or `node`/`python` entrypoints: batch shims reject shell metacharacters in arguments to prevent expansion of prompts by cmd.exe.
+Harnesses run with your OS account and network access, including access outside the project root. Agent shell tools use Docker instead. Arguments are passed without constructing a shell command. Harness runs use a working directory under `PROJECT_ROOT`, time out after at most 120 seconds and retain up to `COMMAND_OUTPUT_BYTES` of output.
 
 ```text
 omnidev connectors save harnesses my-harness --file harness.json
-omnidev connectors install harnesses my-harness
-omnidev connectors run harnesses my-harness --path . --prompt "Create and test a calculator"
+omnidev connectors install harnesses my-harness --approve-host-execution
+omnidev connectors run harnesses my-harness --approve-host-execution --path . --prompt "Create and test a calculator"
 ```
 
-Harness results are shown in Connectors or the CLI. Built-in OmniDev agents use the separate Tasks view for persisted step history and verification. Harness permission prompts, streaming interactive terminals and protocol-specific monitoring remain the responsibility of the selected harness.
+Both `POST /api/v1/connectors/harnesses/{id}/install` and `/run` require `"approve_host_execution": true`. Missing approval returns HTTP 403 before launching a process. The run body also accepts `prompt`, `path`, and `timeout`. Engine-token holders are trusted users; agent tools cannot grant this approval.
 
-## Personalization
+## Appearance and chat behavior
 
-Settings saves theme (light/dark/system), accent, density, font, motion, response style and default chat mode on the current device. Chat modes Ask, Plan and Code supply different system instructions; they do not grant execution permissions. Use Tasks or an explicitly run harness for development that changes files. Thread search filters saved conversations, Create folder creates a real workspace directory, and Attach text includes the file in the next model prompt (up to 200 KB). There is no profile section.
+**Settings** saves theme, blue or graphite accent, density, font, motion, response style and default chat mode on the current device. Reduced motion disables transitions and entry animations. Ask, Plan and Code supply different system instructions without granting execution permission. Use **Activity** or an explicitly approved harness to change files through an agent.
+
+Thread search filters saved conversations. Create folder creates a workspace directory. Attach text includes up to 200 KB in the next model prompt. There is no profile section.
+
+
+<!-- /coderabbit-ai-generated:v1 -->

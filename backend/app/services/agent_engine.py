@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, AsyncIterator, Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.database.session import SessionLocal
 from app.models.agent import (
@@ -34,11 +34,23 @@ logger = logging.getLogger(__name__)
 
 class TaskStatus(str, Enum):
     PENDING = "pending"
+    QUEUED = "queued"
     RUNNING = "running"
+    VERIFYING = "verifying"
     PAUSED = "paused"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+TRANSITIONS = {
+    "pending": {"queued", "running", "failed", "cancelled"},
+    "queued": {"running", "failed", "cancelled"},
+    "running": {"verifying", "paused", "completed", "failed", "cancelled"},
+    "verifying": {"running", "completed", "failed", "cancelled"},
+    "paused": {"running", "failed", "cancelled"},
+    "completed": set(), "failed": set(), "cancelled": set(),
+}
 
 
 class StepKind(str, Enum):
@@ -148,25 +160,76 @@ class AgentEngine:
         return await self._with_db(op)
 
     async def _persist_task(self, context: ExecutionContext, **changes: Any) -> None:
+        changes["updated_at"] = datetime.now(timezone.utc).isoformat()
+
         def op(db):
             task = db.get(TaskModel, context.task_model.id)
             if task is None:
                 raise ValueError(f"Task {context.task_model.id} not found")
-            for name, value in changes.items():
-                setattr(task, name, value)
-            task.updated_at = datetime.now(timezone.utc).isoformat()
+            before = task.status
+            target = changes.get("status", before)
+            if before in {"completed", "failed", "cancelled"}:
+                return {"status": before, "result": task.result, "error": task.error,
+                        "step_count": task.step_count, "updated_at": task.updated_at}
+            # A pause may arrive after the worker's boundary check. Preserve it
+            # until the existing worker resumes, including just before completion.
+            if before == "paused" and target in {"verifying", "completed"}:
+                return {"status": before}
+            if target != before and target not in TRANSITIONS.get(before, set()):
+                raise ValueError(f"Invalid task transition: {before} -> {target}")
+            changed = db.execute(update(TaskModel).where(
+                TaskModel.id == task.id, TaskModel.status == before,
+            ).values(**changes)).rowcount
+            if changed and target != before:
+                db.add(TaskStepModel(task_id=task.id, step_index=context.step_count,
+                    kind="state", content=json.dumps({"from": before, "to": target}),
+                    created_at=changes["updated_at"]))
             db.commit()
+            if not changed:
+                db.expire_all()
+                current = db.get(TaskModel, task.id)
+                return {"status": current.status}
+            return changes
 
-        await self._with_db(op)
+        while True:
+            persisted = await self._with_db(op)
+            for name, value in persisted.items():
+                setattr(context.task_model, name, value)
+            target = changes.get("status")
+            if not target or context.task_model.status == target:
+                return
+            if context.task_model.status in {"completed", "failed", "cancelled"}:
+                return
+            # A concurrent state update won the compare-and-set. Re-read and
+            # validate it before retrying; never report an unpersisted completion.
+            await self._wait_if_paused(context)
+
+    async def _claim_task(self, context: ExecutionContext) -> None:
+        changes = dict(status=TaskStatus.RUNNING.value, error=None, result=None,
+                       step_count=0, updated_at=datetime.now(timezone.utc).isoformat())
+
+        def op(db):
+            claimed = db.execute(
+                update(TaskModel).where(
+                    TaskModel.id == context.task_model.id,
+                    TaskModel.status.in_([TaskStatus.PENDING.value, TaskStatus.QUEUED.value]),
+                ).values(**changes)
+            ).rowcount
+            if claimed == 1:
+                db.add(TaskStepModel(task_id=context.task_model.id, step_index=0, kind="state", content=json.dumps({"from": context.task_model.status, "to": "running"}), created_at=changes["updated_at"]))
+            db.commit()
+            return claimed == 1
+
+        if not await self._with_db(op):
+            raise ValueError(f"Task {context.task_model.id} must be pending to start")
         for name, value in changes.items():
             setattr(context.task_model, name, value)
-        context.task_model.updated_at = datetime.now(timezone.utc).isoformat()
 
     async def execute_task(
         self, task_id: int, project_root: str = ".", stream: bool = False
     ):
         task = await self.load_task(task_id)
-        if task.status != TaskStatus.PENDING.value:
+        if task.status not in {TaskStatus.PENDING.value, TaskStatus.QUEUED.value}:
             raise ValueError(
                 f"Task {task_id} must be pending to start (current status: {task.status})"
             )
@@ -232,13 +295,7 @@ class AgentEngine:
             ),
         )
 
-        await self._persist_task(
-            context,
-            status=TaskStatus.RUNNING.value,
-            error=None,
-            result=None,
-            step_count=0,
-        )
+        await self._claim_task(context)
         self._running_tasks[task_id] = context
         if stream:
             return self._execute_streaming(context)
@@ -271,8 +328,9 @@ class AgentEngine:
             }
             async for event in self._run_steps(context):
                 yield event
-        except asyncio.CancelledError:
-            await self._persist_task(context, status=TaskStatus.CANCELLED.value)
+        except (asyncio.CancelledError, GeneratorExit):
+            if context.task_model.status in {"running", "verifying", "paused"}:
+                await self._persist_task(context, status=TaskStatus.CANCELLED.value)
             raise
         except Exception:
             logger.exception("Streaming task %s failed", task_id)
@@ -293,6 +351,7 @@ class AgentEngine:
         task = context.task_model
         max_steps = max(1, task.max_steps or 25)
         for step_index in range(1, max_steps + 1):
+            await self._wait_if_paused(context)
             if time.monotonic() - context.started >= settings.TASK_TIMEOUT_SECONDS:
                 raise RuntimeError("Task time budget exceeded")
             if not unchanged(context.project_root, context.verification_inputs):
@@ -313,7 +372,8 @@ class AgentEngine:
             context.step_count = step_index
             context.context_manager.update_step_count()
             await self._persist_task(context, step_count=step_index)
-            thought = await asyncio.wait_for(self._plan_step(context), max(0.01, settings.TASK_TIMEOUT_SECONDS - (time.monotonic() - context.started)))
+            thought = await asyncio.wait_for(self._interruptible(self._plan_step(context), context), max(0.01, settings.TASK_TIMEOUT_SECONDS - (time.monotonic() - context.started)))
+            await self._wait_if_paused(context)
             if await self._cancel_requested(context):
                 await self._persist_task(
                     context, status=TaskStatus.CANCELLED.value, step_count=step_index
@@ -334,6 +394,7 @@ class AgentEngine:
             if completion is not None:
                 verification = (task.task_config or {}).get("verification_command")
                 if verification:
+                    await self._persist_task(context, status=TaskStatus.VERIFYING.value)
                     result = await self._execute_action(
                         context,
                         {
@@ -360,12 +421,17 @@ class AgentEngine:
                         or result.result.get("exit_code") != 0
                         or result.result.get("timed_out")
                     ):
+                        await self._persist_task(context, status=TaskStatus.RUNNING.value)
                         context.context_manager.add_message(
                             "user",
                             "Verification failed; fix the project before completing: "
                             + output,
                         )
                         continue
+                if await self._cancel_requested(context):
+                    await self._persist_task(context, status=TaskStatus.CANCELLED.value)
+                    yield {"type": "cancelled", "task_id": task.id, "step": step_index}
+                    return
                 if not unchanged(context.project_root, context.verification_inputs):
                     raise RuntimeError("Original verification inputs changed; human review required")
                 await self._persist_task(
@@ -375,6 +441,9 @@ class AgentEngine:
                     error=None,
                     step_count=step_index,
                 )
+                if task.status == TaskStatus.CANCELLED.value:
+                    yield {"type": "cancelled", "task_id": task.id, "step": step_index}
+                    return
                 if task.project_id is not None:
                     try:
                         from app.services.memory_service import get_memory_service
@@ -462,19 +531,43 @@ class AgentEngine:
             context.cancel_event.set()
 
         def op(db):
-            task = db.get(TaskModel, task_id)
-            if task is None or task.status in {
-                TaskStatus.COMPLETED.value,
-                TaskStatus.FAILED.value,
-                TaskStatus.CANCELLED.value,
-            }:
+            original = db.get(TaskModel, task_id)
+            if original is None:
                 return False
-            task.status = TaskStatus.CANCELLED.value
-            task.updated_at = datetime.now(timezone.utc).isoformat()
+            before = original.status
+            changed = db.execute(
+                update(TaskModel).where(
+                    TaskModel.id == task_id,
+                    TaskModel.status.in_([TaskStatus.PENDING.value, TaskStatus.QUEUED.value, TaskStatus.RUNNING.value, TaskStatus.VERIFYING.value,
+                                          TaskStatus.PAUSED.value]),
+                ).values(status=TaskStatus.CANCELLED.value,
+                         updated_at=datetime.now(timezone.utc).isoformat())
+            ).rowcount
+            if changed:
+                db.add(TaskStepModel(task_id=task_id, step_index=original.step_count, kind="state", content=json.dumps({"from": before, "to": "cancelled"}), created_at=datetime.now(timezone.utc).isoformat()))
             db.commit()
-            return True
+            return changed == 1
 
         return await self._with_db(op)
+
+    async def _wait_if_paused(self, context):
+        while (await self.load_task(context.task_model.id)).status == "paused":
+            if time.monotonic() - context.started >= settings.TASK_TIMEOUT_SECONDS:
+                raise RuntimeError("Task time budget exceeded while paused")
+            await asyncio.sleep(0.2)
+
+    async def _interruptible(self, coroutine, context):
+        operation = asyncio.create_task(coroutine)
+        try:
+            while not operation.done():
+                done, _ = await asyncio.wait({operation}, timeout=0.2)
+                if not done and await self._cancel_requested(context):
+                    raise asyncio.CancelledError()
+            return await operation
+        finally:
+            if not operation.done():
+                operation.cancel()
+            await asyncio.gather(operation, return_exceptions=True)
 
     async def _plan_step(self, context: ExecutionContext) -> str:
         candidates = [
@@ -494,6 +587,7 @@ class AgentEngine:
                 if context.token_spent + charge > settings.TASK_TOKEN_BUDGET:
                     raise RuntimeError("Task token budget exceeded")
                 context.token_spent += charge
+                await self._persist_task(context, task_config={**(context.task_model.task_config or {}), "token_spent": context.token_spent})
                 response = await provider.chat_completion(
                     model=candidate["model"],
                     messages=prompt,
@@ -602,14 +696,15 @@ class AgentEngine:
             )
 
         try:
-            result = await asyncio.wait_for(handler.execute(
+            result = await asyncio.wait_for(self._interruptible(handler.execute(
                 args,
                 {
                     "project_root": context.project_root,
+                    "verification_inputs": context.verification_inputs,
                     "task_id": context.task_model.id,
                     "agent_name": context.agent_model.name,
                 },
-            ), timeout=max(0.01, settings.TASK_TIMEOUT_SECONDS - (time.monotonic() - context.started)))
+            ), context), timeout=max(0.01, settings.TASK_TIMEOUT_SECONDS - (time.monotonic() - context.started)))
             encoded = json.dumps(result, default=str)
             if len(encoded) > settings.COMMAND_OUTPUT_BYTES:
                 result = {"output": encoded[:settings.COMMAND_OUTPUT_BYTES], "truncated": True,

@@ -1,7 +1,7 @@
 import React from "react";
 export const defaults = {
   theme: "light",
-  accent: "indigo",
+  accent: "blue",
   density: "comfortable",
   font: "system",
   motion: "full",
@@ -10,10 +10,8 @@ export const defaults = {
 };
 export function loadAppearance() {
   try {
-    return {
-      ...defaults,
-      ...JSON.parse(localStorage.getItem("omnidev-appearance") || "{}"),
-    };
+    const saved = JSON.parse(localStorage.getItem("omnidev-appearance") || "{}");
+    return { ...defaults, ...saved, accent: ["blue", "graphite"].includes(saved.accent) ? saved.accent : "blue" };
   } catch {
     return defaults;
   }
@@ -21,7 +19,7 @@ export function loadAppearance() {
 export default function Personalization({ value, onChange }) {
   const options = {
     theme: ["light", "dark", "system"],
-    accent: ["indigo", "mint", "rose", "amber"],
+    accent: ["blue", "graphite"],
     density: ["comfortable", "compact"],
     font: ["system", "serif", "mono"],
     motion: ["full", "reduced"],
@@ -30,8 +28,8 @@ export default function Personalization({ value, onChange }) {
   };
   return (
     <div className="settings-page">
-      <span className="eyebrow">MAKE SPACE FOR YOUR IDEAS</span>
-      <h2>A workspace that feels like you.</h2>
+      <span className="eyebrow">PREFERENCES</span>
+      <h2>Appearance & behavior</h2>
       <p>
         Appearance is saved on this device. Response style and chat mode guide
         the model’s next reply.

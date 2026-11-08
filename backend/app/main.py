@@ -18,6 +18,23 @@ from app.database.connection import check_database_connection
 logger = logging.getLogger(__name__)
 
 
+def recover_interrupted_tasks(db):
+    """Fail interrupted work without replaying side effects, and retain an audit event."""
+    from sqlalchemy import inspect, select
+    from app.models.agent import Task, TaskStep
+    from datetime import datetime, timezone
+    import json
+    if not inspect(db.bind).has_table("tasks"):
+        return
+    for task in db.execute(select(Task).where(Task.status.in_(["queued", "running", "verifying", "paused"])) ).scalars():
+        before = task.status
+        task.status = "failed"
+        task.error = "Engine restarted during execution; review existing changes before creating a new task"
+        task.updated_at = datetime.now(timezone.utc).isoformat()
+        db.add(TaskStep(task_id=task.id, step_index=task.step_count, kind="state", content=json.dumps({"from": before, "to": "failed", "reason": "engine_restart"}), created_at=task.updated_at))
+    db.commit()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
@@ -25,19 +42,10 @@ async def lifespan(app: FastAPI):
     settings.PROJECT_ROOT.mkdir(parents=True, exist_ok=True)
     logger.info("AI Development Environment starting")
     # A stopped process cannot resume in-flight model/tool calls safely.
-    from sqlalchemy import update
-    from app.models.agent import Task
     from app.database.session import SessionLocal
-    from sqlalchemy import inspect
 
     with SessionLocal() as db:
-        if inspect(db.bind).has_table("tasks"):
-            db.execute(
-                update(Task)
-                .where(Task.status == "running")
-                .values(status="failed", error="Server restarted during execution")
-            )
-        db.commit()
+        recover_interrupted_tasks(db)
     yield
     from app.api.v1.endpoints.tasks import workers
     import asyncio

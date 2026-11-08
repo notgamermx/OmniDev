@@ -15,6 +15,7 @@ export default function Models({ act, refresh, busy }) {
       request("/models/pool"),
     ]);
     setProviders(p);
+    if (!p.find(item => item.id === selected)?.configured) setSelected(p.find(item => item.configured && item.id !== "ollama")?.id || selected);
     setRoutes(pool.routes);
     await refresh();
   }
@@ -22,6 +23,14 @@ export default function Models({ act, refresh, busy }) {
     act(load);
   }, []);
   const current = providers.find((p) => p.id === selected);
+  useEffect(() => {
+    setModels([]);
+    setChosen("");
+    if (!current?.configured) return;
+    let active = true;
+    request(`/models/catalog/${selected}`).then(data => { if (active) setModels(data.models); }).catch(() => { /* Explicit refresh reports discovery errors through act. */ });
+    return () => { active = false; };
+  }, [selected, current?.configured]);
   async function discover() {
     setModels((await request(`/models/catalog/${selected}`)).models);
   }
@@ -33,7 +42,7 @@ export default function Models({ act, refresh, busy }) {
   return (
     <div className="settings-page">
       <span className="eyebrow">BUILT INTO OMNIDEV</span>
-      <h2>Your models. One built-in router.</h2>
+      <h2>Models & keys</h2>
       <p>
         Set up providers here, browse their live models, and choose your
         fallback order. Cloud providers still require your own keys and their
@@ -208,7 +217,7 @@ export default function Models({ act, refresh, busy }) {
         <div>
           <h3>3. Set your fallback order</h3>
           <p className="muted">
-            Choose “OmniDev · built-in router” and “Automatic” in Chat or
+            Choose “Automatic routing” and “Automatic” in Chat or
             Agents. OmniDev tries these models in order, skips models cooling
             down after errors, and falls back before a streamed response starts.
           </p>

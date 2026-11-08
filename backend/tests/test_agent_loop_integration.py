@@ -73,6 +73,10 @@ def prepare_engine(monkeypatch, task, responses):
     async def not_cancelled(context):
         return False
 
+    async def claim(context):
+        await persist(context, status="running", error=None, result=None, step_count=0)
+
+    monkeypatch.setattr(engine, "_claim_task", claim)
     monkeypatch.setattr(engine, "_persist_task", persist)
     monkeypatch.setattr(engine, "_record_step", record)
     monkeypatch.setattr(engine, "_cancel_requested", not_cancelled)
@@ -186,9 +190,21 @@ async def test_cancel_marks_running_task_and_signals_execution(monkeypatch):
     engine = AgentEngine()
     engine._running_tasks[task.id] = context
 
+    class FakeResult:
+        rowcount = 1
+
     class FakeDb:
         def get(self, model, task_id):
-            return task if task_id == task.id else None
+            task.step_count = 0
+            return task
+
+        def add(self, value):
+            pass
+
+        def execute(self, statement):
+            assert "UPDATE tasks" in str(statement)
+            task.status = "cancelled"
+            return FakeResult()
 
         def commit(self):
             pass

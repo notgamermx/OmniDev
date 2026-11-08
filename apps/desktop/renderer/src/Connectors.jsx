@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { request } from "./services/api";
 import { downloadText } from "./services/download";
 
-export default function Connectors({ act, refresh, busy }) {
+export default function Connectors({ act, refresh, busy, ask }) {
   const [data, setData] = useState({ providers: [], harnesses: [] });
   const [models, setModels] = useState([]),
     [output, setOutput] = useState("");
@@ -188,24 +188,27 @@ export default function Connectors({ act, refresh, busy }) {
             <span className="badge">COMMAND HARNESS</span>
             <h3>{h.name}</h3>
             <code>{h.command}</code>
+            <p>Privileged host operation · approval required for every install or run.</p>
             <div className="toolbar">
               {!!h.install_command.length && (
                 <button
                   disabled={busy}
-                  onClick={() =>
+                  onClick={async () => {
+                    if (!await ask("Approve host installation", null, `Install ${h.name} on your computer?\n\nCommand: ${JSON.stringify(h.install_command)}\n\nThis runs with your OS account permissions and network access, outside Docker. It can change files outside the workspace. Approve only a command you trust.`)) return;
                     act(async () =>
                       setOutput(
                         JSON.stringify(
                           await request(
                             `/connectors/harnesses/${h.id}/install`,
                             "POST",
+                            { approve_host_execution: true },
                           ),
                           null,
                           2,
                         ),
                       ),
-                    )
-                  }
+                    );
+                  }}
                 >
                   Install
                 </button>
@@ -224,16 +227,18 @@ export default function Connectors({ act, refresh, busy }) {
             </div>
             <form
               className="form"
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
                 const f = new FormData(e.currentTarget);
+                const argv = [h.command, ...h.args.map(arg => arg.replaceAll("{prompt}", f.get("prompt")))];
+                if (!await ask("Approve host execution", null, `Run ${h.name} on your computer?\n\nCommand: ${JSON.stringify(argv)}\nFolder: ${f.get("path")}\n\nThis runs with your OS account permissions and network access, outside Docker. It can read or change files outside the workspace. Approve only a harness you trust.`)) return;
                 act(async () =>
                   setOutput(
                     JSON.stringify(
                       await request(
                         `/connectors/harnesses/${h.id}/run`,
                         "POST",
-                        { prompt: f.get("prompt"), path: f.get("path") },
+                        { prompt: f.get("prompt"), path: f.get("path"), approve_host_execution: true },
                       ),
                       null,
                       2,
