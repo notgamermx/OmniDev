@@ -9,28 +9,33 @@ import { desktopConnection } from "./services/desktop";
 import Personalization, { loadAppearance } from "./Personalization";
 const icons = {
   Chat: "✧",
-  Agents: "♧",
-  Tasks: "☷",
-  Files: "▱",
-  Terminal: "⌘",
+  Agents: "◇",
+  Tasks: "▤",
+  Files: "▧",
+  Terminal: "›_",
   Memory: "◷",
   Connectors: "⌁",
-  Models: "✺",
-  Connection: "⊙",
+  Models: "⬡",
+  Connection: "◎",
   Settings: "⚙",
 };
-const views = [
-  "Chat",
-  "Agents",
-  "Tasks",
-  "Files",
-  "Terminal",
-  "Memory",
-  "Models",
-  "Connectors",
-  "Connection",
-  "Settings",
+const navigationGroups = [
+  { label: "WORKSPACE", items: ["Chat", "Agents", "Tasks"] },
+  { label: "BUILD", items: ["Files", "Terminal", "Memory"] },
+  { label: "PREFERENCES", items: ["Models", "Connectors", "Connection", "Settings"] },
 ];
+const viewDescriptions = {
+  Chat: "Think, explore, and build with your connected models.",
+  Agents: "Configure focused agents and the tools they can use.",
+  Tasks: "Run development work and follow every execution step.",
+  Files: "Browse and edit files inside your selected workspace.",
+  Terminal: "Run bounded commands in your isolated execution environment.",
+  Memory: "Manage the context retained across conversations and projects.",
+  Models: "Connect providers, discover models, and tune automatic routing.",
+  Connectors: "Bring your preferred model gateways and coding harnesses.",
+  Connection: "Configure the engine that powers this workspace.",
+  Settings: "Tune the appearance and behaviour of your workbench.",
+};
 export default function App() {
   const [appearance, setAppearance] = useState(loadAppearance);
   const [threadSearch, setThreadSearch] = useState("");
@@ -293,22 +298,28 @@ export default function App() {
           ⌕ <span>Find a conversation</span>
           <kbd>⌘ K</kbd>
         </button>
-        <span className="nav-label">Workspace</span>
-        <nav>
-          {views.map((v) => (
-            <button
-              key={v}
-              className={view === v ? "active" : ""}
-              onClick={() => {
-                setView(v);
-                if (v === "Files") act(() => listFiles(directory));
-              }}
-            >
-              <span className="nav-icon" aria-hidden="true">
-                {icons[v]}
-              </span>
-              {v === "Chat" ? "Ask AI" : v}
-            </button>
+        <nav className="sidebar-nav" aria-label="Main navigation">
+          {navigationGroups.map((group) => (
+            <div className="nav-group" key={group.label}>
+              <span className="nav-label">{group.label}</span>
+              {group.items.map((v) => (
+                <button
+                  key={v}
+                  className={view === v ? "active" : ""}
+                  title={v === "Chat" ? "Ask AI" : v}
+                  aria-current={view === v ? "page" : undefined}
+                  onClick={() => {
+                    setView(v);
+                    if (v === "Files") act(() => listFiles(directory));
+                  }}
+                >
+                  <span className="nav-icon" aria-hidden="true">
+                    {icons[v]}
+                  </span>
+                  {v === "Chat" ? "Ask AI" : v}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
         <div className="sidebar-note">
@@ -344,28 +355,33 @@ export default function App() {
           </button>
         </div>
         <header>
-          <h1>{view === "Chat" ? "Ask AI" : view}</h1>
-          {busy && <small role="status">Working…</small>}
-          <select
-            aria-label="Project"
-            value={project}
-            onChange={(e) => setProject(e.target.value)}
-          >
-            <option value="">All projects</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          {button("New project", async () => {
-            const name = await ask("Project name");
-            if (name) {
-              await request("/projects/", "POST", { name });
-              await refresh();
-            }
-          })}
-          {button("Refresh", refresh)}
+          <div className="page-heading">
+            <h1>{view === "Chat" ? "Ask AI" : view}</h1>
+            <p>{viewDescriptions[view]}</p>
+          </div>
+          <div className="header-actions">
+            {busy && <span className="activity-indicator" role="status">Working…</span>}
+            <select
+              aria-label="Project"
+              value={project}
+              onChange={(e) => setProject(e.target.value)}
+            >
+              <option value="">All projects</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            {button("New project", async () => {
+              const name = await ask("Project name");
+              if (name) {
+                await request("/projects/", "POST", { name });
+                await refresh();
+              }
+            })}
+            {button("Refresh", refresh)}
+          </div>
         </header>
         {error && (
           <div role="alert" className="error">
@@ -452,6 +468,23 @@ export default function App() {
                       Hello, <span>what’s on your mind?</span>
                     </h2>
                     <p>From a first thought to your next big thing.</p>
+                    <div className="starter-prompts" aria-label="Suggested prompts">
+                      {[
+                        ["Plan a feature", "Help me plan a new feature for my project. Break it into clear implementation steps."],
+                        ["Debug an issue", "Help me debug an issue. Ask for the relevant context and suggest a systematic investigation."],
+                        ["Review my code", "Help me review my code for correctness, edge cases, maintainability, and security."],
+                      ].map(([label, prompt]) => (
+                        <button
+                          type="button"
+                          className="suggestion-chip"
+                          key={label}
+                          disabled={busy}
+                          onClick={() => setInput(prompt)}
+                        >
+                          {label} <span aria-hidden="true">↗</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
                 {messages.map((m, i) => (
