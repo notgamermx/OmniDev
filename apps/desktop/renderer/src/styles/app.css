@@ -1849,6 +1849,7 @@ article {
     justify-content: center;
     min-height: 42px;
     padding: 8px 4px;
+    font-size: 0;
   }
 
   nav button .nav-icon {
