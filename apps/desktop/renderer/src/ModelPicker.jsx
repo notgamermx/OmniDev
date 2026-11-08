@@ -17,7 +17,7 @@ export default function ModelPicker({ providers, provider, model, onProvider, on
     setNotice("Loading models…");
     request(`/models/catalog/${encodeURIComponent(provider)}`)
       .then(data => { if (active) { setModels(data.models); setNotice(data.models.length ? "" : "No models returned. Enter the provider’s model ID."); if (!model && !editing && data.models.length) onModel(data.models[0].id); } })
-      .catch(error => { if (active) setNotice(error.message); });
+      .catch(error => { if (active) setNotice(provider === "ollama" ? "Start Ollama locally, or add a cloud provider key in Models & keys." : error.message); });
     return () => { active = false; };
   }, [provider, !!selected, generation]);
   const known = models.some(m => m.id === model), manual = editing || (!!model && !known);

@@ -33,6 +33,7 @@ const views = [
 export default function App() {
   const [appearance, setAppearance] = useState(loadAppearance);
   const [threadSearch, setThreadSearch] = useState("");
+  const [showThreads, setShowThreads] = useState(false);
   const [attachment, setAttachment] = useState(null);
   useEffect(() => {
     localStorage.setItem("omnidev-appearance", JSON.stringify(appearance));
@@ -315,35 +316,13 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="sidebar-note">
-          <strong>Local workspace</strong>
-          <p>One engine for desktop, web, and terminal.</p>
-          <button onClick={() => setView("Models")}>Manage models →</button>
-        </div>
-        <div className="connection">
-          <i className={online ? "online" : ""} />{" "}
-          {online ? "Connected" : "Disconnected"}
-          <small>{root || "Connect to your engine"}</small>
-        </div>
+        <button className="connection" onClick={() => setView("Connection")}>
+          <i className={online ? "online" : ""} />
+          <span>{online ? "Engine connected" : "Engine offline"}</span>
+          <span aria-hidden="true">↗</span>
+        </button>
       </aside>
       <main>
-        <div className="breadcrumb">
-          <span>Workspace</span>
-          <span> / </span>
-          <strong>{label(view)}</strong>
-          <button
-            aria-label="Toggle theme"
-            title="Toggle light and dark"
-            onClick={() =>
-              setAppearance({
-                ...appearance,
-                theme: appearance.theme === "dark" ? "light" : "dark",
-              })
-            }
-          >
-            ◐
-          </button>
-        </div>
         <header>
           <h1>{label(view)}</h1>
           {busy && <small role="status">Working…</small>}
@@ -367,6 +346,7 @@ export default function App() {
             }
           })}
           {button("Refresh", refresh)}
+          <button className="theme-toggle" aria-label="Toggle theme" title="Toggle light and dark" onClick={() => setAppearance({ ...appearance, theme: appearance.theme === "dark" ? "light" : "dark" })}>◐</button>
         </header>
         {error && (
           <div role="alert" className="error">
@@ -377,76 +357,42 @@ export default function App() {
         )}
         <section className={view === "Chat" ? "chat-section" : ""}>
           {view === "Chat" && (
-            <div className="chat">
-              <div className="toolbar chat-tools">
-                <input
-                  id="thread-search"
-                  aria-label="Search threads"
-                  placeholder="⌕  Search threads"
-                  value={threadSearch}
-                  onChange={(e) => setThreadSearch(e.target.value)}
-                />
-                <select
-                  aria-label="Conversation"
-                  disabled={busy}
-                  value={session}
-                  onChange={(e) =>
-                    act(async () => {
-                      setSession(e.target.value);
-                      setMessages(
-                        e.target.value
-                          ? (await request(`/sessions/${e.target.value}`))
-                              .messages
-                          : [],
-                      );
-                    })
-                  }
-                >
-                  <option value="">New conversation</option>
-                  {sessions
-                    .filter((s) =>
-                      s.name.toLowerCase().includes(threadSearch.toLowerCase()),
-                    )
-                    .map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                </select>
-                {button("Create folder", async () => {
-                  const path = await ask("Folder path relative to workspace");
-                  if (path) await request("/directories", "POST", { path });
-                })}
-                <button
-                  className="primary"
-                  disabled={busy}
-                  onClick={() => {
-                    setSession("");
-                    setMessages([]);
-                    setInput("");
-                  }}
-                >
-                  + New chat
-                </button>
-                {messages.length > 0 && button("↓ Download chat", () => downloadText("omnidev-conversation.md", messages.map((m) => `## ${m.role}\n\n${m.content}`).join("\n\n"), "text/markdown;charset=utf-8"))}
-                {session &&
-                  button("Delete conversation", async () => {
-                    await request(`/sessions/${session}`, "DELETE");
-                    setSession("");
-                    setMessages([]);
-                    await refresh();
-                  })}
+            <div className={"chat-workspace" + (showThreads ? " threads-open" : "")}>
+              <div className="conversation-sidebar" role="navigation" aria-label="Conversations">
+                <div className="conversation-sidebar-heading"><strong>Conversations</strong><span>{sessions.length}</span><button className="close-threads" aria-label="Close conversations" onClick={() => setShowThreads(false)}>×</button></div>
+                <button className="new-conversation" disabled={busy} onClick={() => { setSession(""); setMessages([]); setInput(""); setShowThreads(false); }}>+ New conversation</button>
+                <input id="thread-search" aria-label="Search threads" placeholder="Search conversations…" value={threadSearch} onChange={e => setThreadSearch(e.target.value)} />
+                <div className="conversation-list">
+                  {sessions.filter(s => s.name.toLowerCase().includes(threadSearch.toLowerCase())).map(s => <button key={s.id} className={String(session) === String(s.id) ? "selected" : ""} aria-current={String(session) === String(s.id) ? "page" : undefined} disabled={busy} onClick={() => act(async () => { const saved = await request(`/sessions/${s.id}`); setSession(s.id); setMessages(saved.messages); setShowThreads(false); })}><Icon name="Chat" /><span>{s.name}</span></button>)}
+                  {!sessions.length && <p>Your conversations will appear here.</p>}
+                  {!!sessions.length && !sessions.some(s => s.name.toLowerCase().includes(threadSearch.toLowerCase())) && <p>No matching conversations.</p>}
+                </div>
+                <button className="workspace-files" onClick={() => { setView("Files"); act(() => listFiles(directory)); }}><Icon name="Files" /><span>Browse workspace files</span><span>↗</span></button>
               </div>
+              <div className="chat">
+                <div className="conversation-heading">
+                  <button className="threads-toggle" aria-label="Toggle conversations" aria-expanded={showThreads} onClick={() => setShowThreads(!showThreads)}><Icon name="Chat" /></button>
+                  <span>{sessions.find(s => String(s.id) === String(session))?.name || "New conversation"}</span>
+                  <div className="conversation-actions">
+                    {button("Create folder", async () => { const path = await ask("Folder path relative to workspace"); if (path) await request("/directories", "POST", { path }); })}
+                    {messages.length > 0 && button("↓ Download chat", () => downloadText("omnidev-conversation.md", messages.map(m => `## ${m.role}\n\n${m.content}`).join("\n\n"), "text/markdown;charset=utf-8"))}
+                    {session && button("Delete conversation", async () => { if (!(await ask("Delete this conversation?", null))) return; await request(`/sessions/${session}`, "DELETE"); setSession(""); setMessages([]); await refresh(); })}
+                  </div>
+                </div>
               <div className="messages">
                 {!messages.length && (
-                  <div className="empty">
-                    <img className="welcome-logo" src={logo} alt="OmniDev" width="48" height="48" />
-                    <span className="eyebrow">YOUR DEVELOPMENT WORKSPACE</span>
-                    <h2>What are we building?</h2>
-                    <p>Explore an idea, understand your code, or plan your next change.</p>
-                    <div className="starter-actions">
-                      {["Explain this project", "Plan a feature", "Review my code"].map(text => <button key={text} onClick={() => { setInput(text); document.querySelector('[aria-label="Message"]')?.focus(); }}>{text} <span>↗</span></button>)}
+                  <div className="conversation-empty">
+                    <span className="workspace-caption"><span className="workspace-mark">/</span> {projects.find(p => String(p.id) === String(project))?.name || "Your workspace"}</span>
+                    <h2>Start a conversation.</h2>
+                    <p>Bring a question, a piece of code, or your next change.</p>
+                    <div className="starter-list">
+                      {[
+                        ["Explain this project", "Find your way around the codebase."],
+                        ["Plan a feature", "Break an idea into useful steps."],
+                        ["Review my code", "Get a second look at a change."],
+                      ].map(([text, detail], i) => <button key={text} onClick={() => { setInput(text); document.querySelector('[aria-label="Message"]')?.focus(); }}><span className="starter-number">0{i + 1}</span><span><strong>{text}</strong><small>{detail}</small></span><span aria-hidden="true">↗</span></button>)}
                     </div>
+                    <button className="text-link" onClick={() => setView("Tasks")}>Run an agent task <span>→</span></button>
                   </div>
                 )}
                 {messages.map((m, i) => (
@@ -461,18 +407,9 @@ export default function App() {
                 ))}
               </div>
               <form onSubmit={send} className="compose">
-                <div className="compose-heading">
-                  <Icon name="Chat" />{" "}
-                  {appearance.mode === "plan"
-                    ? "Let’s make a plan"
-                    : appearance.mode === "code"
-                      ? "Let’s build something"
-                      : "Ask me anything"}
-                  <small> — a little clarity goes a long way.</small>
-                </div>
                 <textarea
                   aria-label="Message"
-                  placeholder="Ask a question or describe an idea…"
+                  placeholder="Describe a change, ask about your code, or paste an error…"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   disabled={busy}
@@ -541,8 +478,7 @@ export default function App() {
                     {busy ? "···" : "↑"}
                   </button>
                 </div>
-              </form>
-              <div className="model-bar">
+                <div className="composer-models">
                 <ModelPicker
                   onSetup={() => setView("Models")}
                   providers={providers}
@@ -552,7 +488,9 @@ export default function App() {
                   onModel={setModel}
                   busy={busy}
                 />
-                <small>Ctrl + Enter to send</small>
+                </div>
+              </form>
+              <small className="compose-hint">Ctrl + Enter to send · Conversations saved locally</small>
               </div>
             </div>
           )}

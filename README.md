@@ -20,7 +20,13 @@ Tagged releases publish the MSI, portable CLI ZIP, Python wheel, Linux desktop p
 
 ![OmniDev workspace](docs/images/workbench.png)
 
-Interface shown with a demonstration model catalog.
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:ecd4c579d4ae4912e2341a6cbec617d3c744e451ba9e9df9bb8f62e4ad54cea6 -->
+
+Conversation history and model controls share one workspace.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 <!-- /coderabbit-ai-generated:v1 -->
 
