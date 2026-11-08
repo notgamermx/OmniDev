@@ -111,7 +111,7 @@ jobs:
           cp packages/omnidev-linux-desktop/*.deb release/
           test -f release/OmniDev-Windows-CLI.zip
           sha256sum release/* > release/SHA256SUMS
-          gh release create "$RELEASE_TAG" release/* --verify-tag --title "OmniDev $RELEASE_TAG" --generate-notes
+          gh release upload "$RELEASE_TAG" release/* --clobber release/* --verify-tag --title "OmniDev $RELEASE_TAG" --generate-notes
 
   dependency-audit:
     runs-on: ubuntu-latest
