@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import ClassVar
+from app.version import VERSION
 
 SOURCE_ROOT = Path(__file__).resolve().parents[3]
 ROOT_DIR = Path(
@@ -17,8 +19,8 @@ ROOT_DIR = Path(
 
 
 class Settings(BaseSettings):
-    APP_NAME: str = "Personal AI Development Environment"
-    APP_VERSION: str = "1.0.3"
+    APP_NAME: str = "OmniDev"
+    APP_VERSION: ClassVar[str] = VERSION
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
     DATABASE_URL: str = f"sqlite:///{(ROOT_DIR / 'data' / 'app.db').as_posix()}"

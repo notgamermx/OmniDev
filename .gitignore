@@ -51,3 +51,7 @@ target/
 
 # Local encrypted connector configuration
 /connectors/
+
+# Generated Tauri schema files
+/apps/desktop/src-tauri/gen/
+coverage.xml

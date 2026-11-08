@@ -326,6 +326,8 @@ def main():
         default=os.environ.get("OMNIDEV_TOKEN", ""),
         help="Prefer OMNIDEV_TOKEN to avoid shell history",
     )
+    from app.version import VERSION
+    parser.add_argument("--version", action="version", version=f"OmniDev {VERSION}")
     subs = parser.add_subparsers(dest="command", required=True)
     server = subs.add_parser(
         "serve", help="Initialize the database and serve the engine and web app"
@@ -343,7 +345,7 @@ def main():
         sub.add_argument(
             "action",
             choices=["list", "create", "get", "delete"]
-            + (["run", "cancel"] if name == "tasks" else []),
+            + (["run", "cancel", "pause", "resume"] if name == "tasks" else []),
         )
         sub.add_argument("id", nargs="?")
         sub.add_argument("--json", default="{}", help="JSON fields for creation")
@@ -453,11 +455,16 @@ def main():
                     "delete": "DELETE",
                     "cancel": "DELETE",
                     "run": "POST",
+                    "pause": "POST",
+                    "resume": "POST",
                 }[action]
                 body = json.loads(args.json) if action == "create" else None
                 if action == "run":
                     path += "/execute"
                     body = {"project_root": args.path}
+                if action in {"pause", "resume"}:
+                    path += "/pause"
+                    body = {"paused": action == "pause"}
                 if cmd == "tasks" and action == "delete":
                     path = "tasks/"
                     body = int(args.id)

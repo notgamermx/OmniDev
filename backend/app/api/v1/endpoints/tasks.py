@@ -8,7 +8,6 @@ from fastapi import APIRouter, Body, HTTPException, Path, Response
 from fastapi.responses import StreamingResponse
 
 from app.services.task_service import TaskService, get_task_service as _get_task_service
-from app.services.agent_service import AgentService
 
 logger = logging.getLogger(__name__)
 
@@ -290,26 +289,6 @@ async def delete_task(task_id: int = Body(..., description="Task ID to delete"))
     return {"deleted": True, "task_id": task_id}
 
 
-class TaskResults:
-    """Helper class for generating task result summaries."""
-
-    @staticmethod
-    def summarize_steps(steps: list) -> str:
-        """Generate a summary from execution steps."""
-        thoughts = [s for s in steps if s.kind == "thought"]
-        actions = [s for s in steps if s.kind == "observation" and s.tool_name]
-        errors = [s for s in steps if s.error]
-
-        summary = f"Executed {len(steps)} steps: "
-        summary += f"{len(thoughts)} reasoning steps, "
-        summary += f"{len(actions)} tool actions, "
-        if errors:
-            summary += f"{len(errors)} errors"
-        else:
-            summary += "no errors"
-
-        return summary
-
 
 # Retain workers until completion and cancel them on application shutdown.
 import asyncio
@@ -329,6 +308,19 @@ async def run_task(task_id: int, project_root: str = Body(".", embed=True)):
         raise HTTPException(409, "Task has already started")
     path = str(project_path(project_root))
 
+    from sqlalchemy import update
+    from app.models.agent import Task
+    from datetime import datetime, timezone
+    def queue(db):
+        changed = db.execute(update(Task).where(Task.id == task_id, Task.status == "pending").values(status="queued", updated_at=datetime.now(timezone.utc).isoformat())).rowcount
+        if changed:
+            from app.models.agent import TaskStep
+            db.add(TaskStep(task_id=task_id, step_index=0, kind="state", content=json.dumps({"from": "pending", "to": "queued"}), created_at=datetime.now(timezone.utc).isoformat()))
+        db.commit()
+        return changed == 1
+    if not service._with_db(queue):
+        raise HTTPException(409, "Task has already started")
+
     async def run():
         try:
             await service.start_task(task_id, path)
@@ -339,3 +331,25 @@ async def run_task(task_id: int, project_root: str = Body(".", embed=True)):
 
     workers[task_id] = asyncio.create_task(run())
     return {"task_id": task_id, "status": "queued"}
+
+
+@router.post("/{task_id}/pause")
+async def pause_task(task_id: int, paused: bool = Body(True, embed=True)):
+    """Pause at the next operation boundary; resume only the existing worker."""
+    from sqlalchemy import update
+    from app.models.agent import Task, TaskStep
+    from datetime import datetime, timezone
+    before, target = ("running", "paused") if paused else ("paused", "running")
+    def transition(db):
+        task = db.get(Task, task_id)
+        if task is None:
+            return 0
+        step_index = task.step_count
+        changed = db.execute(update(Task).where(Task.id == task_id, Task.status == before).values(status=target, updated_at=datetime.now(timezone.utc).isoformat())).rowcount
+        if changed:
+            db.add(TaskStep(task_id=task_id, step_index=step_index, kind="state", content=json.dumps({"from": before, "to": target}), created_at=datetime.now(timezone.utc).isoformat()))
+        db.commit()
+        return changed
+    if not get_task_service()._with_db(transition):
+        raise HTTPException(409, f"Task must be {before} to {target}")
+    return {"task_id": task_id, "status": target}

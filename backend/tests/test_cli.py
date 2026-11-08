@@ -8,6 +8,25 @@ cli = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cli)
 
 
+@pytest.mark.parametrize("action,paused", [("pause", True), ("resume", False)])
+def test_cli_controls_existing_task_worker(monkeypatch, action, paused):
+    import httpx
+    import json
+    import app.cli as application_cli
+
+    original_client = httpx.Client
+    sent = []
+    def handler(request):
+        sent.append(request)
+        return httpx.Response(200, json={"status": "paused" if paused else "running"})
+    monkeypatch.setattr(application_cli.httpx, "Client", lambda **kwargs: original_client(**kwargs, transport=httpx.MockTransport(handler)))
+    monkeypatch.setattr("sys.argv", ["omnidev", "tasks", action, "7"])
+    assert application_cli.main() == 0
+    assert sent[-1].method == "POST"
+    assert sent[-1].url.path == "/api/v1/tasks/7/pause"
+    assert json.loads(sent[-1].content) == {"paused": paused}
+
+
 def test_memory_subcommands_dispatch(capsys):
     class Client:
         def get_session_memory(self, key):

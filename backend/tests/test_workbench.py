@@ -276,5 +276,9 @@ async def test_agent_provider_failover_closes_failed_provider(monkeypatch):
         context_manager=SimpleNamespace(get_prompt=lambda: []),
     )
     context.token_spent = 0
-    assert await AgentEngine()._plan_step(context) == "COMPLETE: recovered"
+    from unittest.mock import AsyncMock
+    context.task_model = SimpleNamespace(task_config={})
+    engine = AgentEngine()
+    engine._persist_task = AsyncMock()
+    assert await engine._plan_step(context) == "COMPLETE: recovered"
     assert closed == ["ollama", "groq"]

@@ -1,0 +1,18 @@
+name: Bug report
+description: Report a reproducible OmniDev problem
+title: "[Bug]: "
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version and operating system
+      description: Include desktop/web/CLI, installation method, and Docker mode when relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction and expected result
+      description: Include steps, actual result, and sanitized errors. Never paste keys or tokens.
+    validations:
+      required: true

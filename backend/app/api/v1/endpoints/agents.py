@@ -35,6 +35,7 @@ async def list_agents(enabled_only: bool = True):
                 "max_steps": a.max_steps,
                 "enabled": a.enabled,
                 "tool_count": len(a.tool_names),
+                "tool_names": a.tool_names,
                 "created_at": a.created_at,
                 "updated_at": a.updated_at,
             }

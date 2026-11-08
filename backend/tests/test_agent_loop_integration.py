@@ -194,6 +194,13 @@ async def test_cancel_marks_running_task_and_signals_execution(monkeypatch):
         rowcount = 1
 
     class FakeDb:
+        def get(self, model, task_id):
+            task.step_count = 0
+            return task
+
+        def add(self, value):
+            pass
+
         def execute(self, statement):
             assert "UPDATE tasks" in str(statement)
             task.status = "cancelled"
