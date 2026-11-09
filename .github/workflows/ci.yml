@@ -57,6 +57,20 @@ jobs:
         with:
           node-version: '24'
       - uses: dtolnay/rust-toolchain@stable
+      - name: Install WiX Toolset for Tauri
+        shell: pwsh
+        run: |
+          choco install wixtoolset --version=3.14.1.20250415 --yes --no-progress
+          $WixBin = Join-Path "${env:ProgramFiles(x86)}" 'WiX Toolset v3.14\bin'
+          if (!(Test-Path (Join-Path $WixBin 'candle.exe'))) {
+            throw "WiX installation did not provide candle.exe at $WixBin"
+          }
+          $TauriWixCache = Join-Path $env:LOCALAPPDATA 'tauri\WixTools314'
+          New-Item -ItemType Directory -Path $TauriWixCache -Force | Out-Null
+          Copy-Item (Join-Path $WixBin '*') $TauriWixCache -Recurse -Force
+          if (!(Test-Path (Join-Path $TauriWixCache 'light.exe'))) {
+            throw 'WiX cache is incomplete: light.exe is missing'
+          }
       - run: python -m pip install -e ".[dev]" pyinstaller
       - run: python -m pytest backend/tests -q
       - run: python scripts/windows_bundle.py
