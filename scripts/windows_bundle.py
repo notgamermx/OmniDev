@@ -4,6 +4,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -57,21 +58,27 @@ def main():
     # Artifact used by CI's native smoke test and usable independently of the GUI.
     shutil.make_archive(str(ROOT / "dist/OmniDev-Windows-CLI"), "zip", binary.parent)
     subprocess.run([npm, "ci", "--prefix", str(ROOT / "apps/desktop")], check=True)
-    subprocess.run(
-        [
-            npm,
-            "--prefix",
-            str(ROOT / "apps/desktop"),
-            "run",
-            "tauri",
-            "--",
-            "build",
-            "--config",
-            "src-tauri/tauri.windows.conf.json",
-        ],
-        cwd=ROOT,
-        check=True,
-    )
+    command = [
+        npm,
+        "--prefix",
+        str(ROOT / "apps/desktop"),
+        "run",
+        "tauri",
+        "--",
+        "build",
+        "--config",
+        "src-tauri/tauri.windows.conf.json",
+    ]
+    # WiX downloads can fail with transient gateway errors. Reuse the compiled
+    # application on retry; persistent build failures still fail the job.
+    for attempt in range(3):
+        try:
+            subprocess.run(command, cwd=ROOT, check=True)
+            break
+        except subprocess.CalledProcessError:
+            if attempt == 2:
+                raise
+            time.sleep(5 * (attempt + 1))
 
 
 if __name__ == "__main__":
