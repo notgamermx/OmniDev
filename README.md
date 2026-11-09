@@ -8,7 +8,7 @@ A local workspace for AI-assisted software development. Chat with your chosen mo
 
 [![CI](https://github.com/notgamermx/OmniDev/actions/workflows/ci.yml/badge.svg)](https://github.com/notgamermx/OmniDev/actions/workflows/ci.yml)
 
-[Download OmniDev 1.0.4 for Windows](https://github.com/notgamermx/OmniDev/releases/download/v1.0.4/OmniDev_1.0.4_x64_en-US.msi) · [All official releases](https://github.com/notgamermx/OmniDev/releases) · [Windows installation guide](docs/WINDOWS.md)
+[Download OmniDev 1.0.4 for Windows](https://github.com/notgamermx/OmniDev/releases/download/v1.0.4/OmniDev_1.0.4_x64_en-US.msi) ·[Download OmniDev 1.0.4 for Windows]([https://github.com/notgamermx/OmniDev/releases/download/v1.0.4/OmniDev_1.0.4_x64_en-US.msi](https://github.com/notgamermx/OmniDev/actions/runs/42628671730/artifacts/13680028463))· [All official releases](https://github.com/notgamermx/OmniDev/releases) · [Windows installation guide](docs/WINDOWS.md)
 
 Tagged releases publish the MSI, portable CLI ZIP, Python wheel, Linux desktop package and checksums after required CI jobs pass. A download is available only once that release is published. GitHub Releases is the official distribution source.
 
