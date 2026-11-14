@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import ModelPicker from "./ModelPicker";
 import { request } from "./services/api";
 
-export default function OmniMode({ agents, providers, act, busy }) {
+export default function OmniMode({ agents, providers, act, busy, onSetup }) {
   const [prompt, setPrompt] = useState("");
   const [selected, setSelected] = useState([]);
   const [reviewerProvider, setReviewerProvider] = useState("builtin");
@@ -92,7 +92,7 @@ export default function OmniMode({ agents, providers, act, busy }) {
         <div className="omnimode-panel-heading">
           <div><h3>3. Independent reviewer</h3><p>Choose your strongest configured model. For example, use NVIDIA NIM with Nemotron 3 Ultra 550B when your account has access to it.</p></div>
         </div>
-        <ModelPicker providers={providers} provider={reviewerProvider} model={reviewerModel} onProvider={(value) => { setReviewerProvider(value); setReviewerModel(value === "builtin" ? "auto" : ""); }} onModel={setReviewerModel} onSetup={() => window.dispatchEvent(new CustomEvent("omnidev-open-models"))} busy={busy} />
+        <ModelPicker providers={providers} provider={reviewerProvider} model={reviewerModel} onProvider={(value) => { setReviewerProvider(value); setReviewerModel(value === "builtin" ? "auto" : ""); }} onModel={setReviewerModel} onSetup={onSetup} busy={busy} />
         <p className="muted omnimode-note">The reviewer compares model outputs and flags reasoning gaps. This review is not a substitute for actually running tests, checking external sources, or inspecting project files.</p>
       </section>
 
