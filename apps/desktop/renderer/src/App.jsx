@@ -23,6 +23,7 @@ const label = (view) => ({ Chat: "Chat", Tasks: "Activity", Models: "Models & ke
 const views = [
   "Chat",
   "Agents",
+  "OmniMode",
   "Tasks",
   "Files",
   "Terminal",
@@ -36,7 +37,8 @@ export default function App() {
   const [appearance, setAppearance] = useState(loadAppearance);
   const [threadSearch, setThreadSearch] = useState("");
   const [showThreads, setShowThreads] = useState(false);
-  const [attachment, setAttachment] = useState(null);\n  const [imagePreview, setImagePreview] = useState("");
+  const [attachment, setAttachment] = useState(null);
+  const [imagePreview, setImagePreview] = useState("");
   useEffect(() => {
     localStorage.setItem("omnidev-appearance", JSON.stringify(appearance));
     const element = document.documentElement;
@@ -215,6 +217,7 @@ export default function App() {
     const f = await request("/file?path=" + encodeURIComponent(path));
     setFile(path);
     setContent(f.content);
+    setImagePreview("");
     setDirty(false);
   }
   async function activateProject(value) {
@@ -389,8 +392,11 @@ export default function App() {
           {button("New project", async () => {
             const name = await ask("Project name");
             if (name) {
-              await request("/projects/", "POST", { name });
+              const created = await request("/projects/", "POST", { name });
+              const workspace = await request(`/projects/${created.id}/workspace`, "POST");
               await refresh();
+              setProject(String(created.id));
+              await listFiles(workspace.path);
             }
           })}
           {button("Refresh", refresh)}
@@ -542,7 +548,10 @@ export default function App() {
               </div>
             </div>
           )}
-          {view === "OmniMode" && (\n            <OmniMode agents={agents} providers={providers} act={act} busy={busy} onSetup={() => setView("Models")} />\n          )}\n          {view === "Agents" && (
+          {view === "OmniMode" && (
+            <OmniMode agents={agents} providers={providers} act={act} busy={busy} onSetup={() => setView("Models")} />
+          )}
+          {view === "Agents" && (
             <>
               <h2>Create an agent</h2>
               <form
@@ -565,7 +574,19 @@ export default function App() {
               >
                 <label>
                   Name
-                  <input name="name" required />
+                  <input name="name" placeholder="e.g. Code reviewer" required />
+                </label>
+                <label>
+                  Role / focus
+                  <input name="description" placeholder="e.g. Find bugs, security issues and missing tests" />
+                </label>
+                <label>
+                  Agent instructions
+                  <textarea name="system_prompt" rows={4} placeholder="Describe how this agent should approach its work. Leave blank for the standard development-agent instructions." />
+                </label>
+                <label>
+                  Maximum execution steps
+                  <input name="max_steps" type="number" min="1" max="200" defaultValue="25" />
                 </label>
                 <ModelPicker
                   onSetup={() => setView("Models")}
@@ -610,13 +631,10 @@ export default function App() {
                 {agents.map((a) => (
                   <article key={a.id}>
                     <h3>{a.name}</h3>
-                    <p>
-                      {a.provider} / {a.model}
-                    </p>
-                    <p>
-                      {a.tool_count} tools ·{" "}
-                      {a.enabled ? "Enabled" : "Disabled"}
-                    </p>
+                    <p>{a.description || "General-purpose development agent"}</p>
+                    <p>{a.provider} / {a.model} · {a.max_steps} max steps</p>
+                    <p>{a.tool_count} tools · {a.enabled ? "Enabled" : "Disabled"} · {(a.tool_names || []).join(", ")}</p>
+                    {button(a.enabled ? "Disable" : "Enable", async () => { await request(`/agents/${a.id}`, "PUT", { enabled: !a.enabled }); await refresh(); })}
                     {button("Delete", async () => {
                       if (await ask("Delete agent and its tasks?", null)) {
                         await request(`/agents/${a.id}`, "DELETE");
@@ -734,7 +752,11 @@ export default function App() {
                     value={directory}
                     onChange={(e) => setDirectory(e.target.value)}
                   />
-                  {button("Open", () => listFiles(directory))}\n                  <label className="import-button">\n                    Import files\n                    <input type="file" multiple onChange={importFiles} aria-label="Import files into workspace" />\n                  </label>
+                  {button("Open", () => listFiles(directory))}
+                  <label className="import-button">
+                    Import files
+                    <input type="file" multiple onChange={importFiles} aria-label="Import files into workspace" />
+                  </label>
                   {button("Up", () =>
                     listFiles(
                       directory.includes("/")
@@ -778,7 +800,9 @@ export default function App() {
                     setDirty(false);
                   })}
                 </div>
-                <textarea
+                {imagePreview ? (
+                  <div className="image-preview"><img src={imagePreview} alt={`Preview of ${file}`} /><p>{file}</p></div>
+                ) : <textarea
                   aria-label="Code editor"
                   disabled={!file}
                   value={content}
@@ -787,7 +811,7 @@ export default function App() {
                     setContent(e.target.value);
                     setDirty(true);
                   }}
-                />
+                />}
               </div>
             </div>
           )}
