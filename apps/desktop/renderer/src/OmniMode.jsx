@@ -5,8 +5,8 @@ import { request } from "./services/api";
 export default function OmniMode({ agents, providers, act, busy, onSetup }) {
   const [prompt, setPrompt] = useState("");
   const [selected, setSelected] = useState([]);
-  const [reviewerProvider, setReviewerProvider] = useState("builtin");
-  const [reviewerModel, setReviewerModel] = useState("auto");
+  const [reviewerProvider, setReviewerProvider] = useState("");
+  const [reviewerModel, setReviewerModel] = useState("");
   const [result, setResult] = useState(null);
 
   function toggleAgent(id) {
