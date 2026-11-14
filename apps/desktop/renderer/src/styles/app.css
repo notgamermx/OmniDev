@@ -752,3 +752,8 @@ button.omnimode-run:disabled { opacity: .45; cursor: not-allowed; }
   .omnimode-flow { gap: 6px; font-size: 10px; }
   .omnimode-flow span { padding: 6px 7px; }
 }
+
+.workspace-file-row { display: grid; grid-template-columns: minmax(0,1fr) 30px; align-items: center; gap: 4px; }
+.workspace-file-row > .row { min-width: 0; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.workspace-file-download { width: 30px; height: 30px; padding: 0; color: var(--muted); background: transparent; border: 0; font-size: 13px; }
+.workspace-file-download:hover { color: var(--text); background: var(--soft); }
