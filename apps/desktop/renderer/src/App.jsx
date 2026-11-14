@@ -266,6 +266,22 @@ export default function App() {
     setDirty(false);
   }
 
+  async function downloadWorkspaceFile(path) {
+    const asset = await request("/file/base64?path=" + encodeURIComponent(path));
+    const binary = atob(asset.content_base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    const blob = new Blob([bytes], { type: asset.media_type || "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = path.split("/").pop() || "workspace-file";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async function makeTask(e) {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
@@ -766,26 +782,37 @@ export default function App() {
                     ),
                   )}
                   {button("New file", async () => {
-                    const path = await ask("Path relative to project root");
-                    if (path) {
+                    const name = await ask("File name inside the current folder");
+                    if (name) {
+                      const path = directory === "." ? name : `${directory}/${name}`;
                       await request("/file", "PUT", { path, content: "" });
                       await listFiles(directory);
                       await openFile(path);
                     }
                   })}
+                  {button("New folder", async () => {
+                    const name = await ask("Folder name inside the current folder");
+                    if (name) {
+                      const path = directory === "." ? name : `${directory}/${name}`;
+                      await request("/directories", "POST", { path });
+                      await listFiles(directory);
+                    }
+                  })}
                 </div>
                 {files.map((f) => (
-                  <button
-                    className="row"
-                    key={f.path}
-                    onClick={() =>
-                      act(() =>
-                        f.isDirectory ? listFiles(f.path) : f.isImage ? openImage(f.path) : openFile(f.path),
-                      )
-                    }
-                  >
-                    {f.isDirectory ? "▸" : "·"} {f.name}
-                  </button>
+                  <div className="workspace-file-row" key={f.path}>
+                    <button
+                      className="row"
+                      onClick={() =>
+                        act(() =>
+                          f.isDirectory ? listFiles(f.path) : f.isImage ? openImage(f.path) : openFile(f.path),
+                        )
+                      }
+                    >
+                      {f.isDirectory ? "▸" : f.isImage ? "▧" : "·"} {f.name}
+                    </button>
+                    {!f.isDirectory && <button className="workspace-file-download" type="button" title={`Download ${f.name}`} aria-label={`Download ${f.name}`} onClick={() => act(() => downloadWorkspaceFile(f.path))}>↓</button>}
+                  </div>
                 ))}
               </div>
               <div className="editor">
@@ -794,12 +821,11 @@ export default function App() {
                     {file || "Select a file"}
                     {dirty ? " •" : ""}
                   </strong>
-                  <button type="button" disabled={!file || busy} onClick={() => act(() => downloadText(file, content))}>↓ Download file</button>
-                  {button("Save", async () => {
-                    if (!file) return;
+                  <button type="button" disabled={!file || busy} onClick={() => act(() => downloadWorkspaceFile(file))}>↓ Download file</button>
+                  <button type="button" disabled={!file || busy || Boolean(imagePreview)} onClick={() => act(async () => {
                     await request("/file", "PUT", { path: file, content });
                     setDirty(false);
-                  })}
+                  })}>Save</button>
                 </div>
                 {imagePreview ? (
                   <div className="image-preview"><img src={imagePreview} alt={`Preview of ${file}`} /><p>{file}</p></div>
