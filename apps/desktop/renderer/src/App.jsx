@@ -221,14 +221,23 @@ export default function App() {
     setDirty(false);
   }
   async function activateProject(value) {
+    if (dirty && !(await ask("Discard unsaved edits before switching projects?", null))) return;
     await act(async () => {
       if (!value) {
         setProject("");
+        setFile("");
+        setContent("");
+        setImagePreview("");
+        setDirty(false);
         await listFiles(".");
         return;
       }
       const workspace = await request(`/projects/${value}/workspace`, "POST");
       setProject(String(value));
+      setFile("");
+      setContent("");
+      setImagePreview("");
+      setDirty(false);
       await listFiles(workspace.path);
     });
   }
@@ -406,12 +415,17 @@ export default function App() {
             ))}
           </select>
           {button("New project", async () => {
+            if (dirty && !(await ask("Discard unsaved edits before creating a project?", null))) return;
             const name = await ask("Project name");
             if (name) {
               const created = await request("/projects/", "POST", { name });
               const workspace = await request(`/projects/${created.id}/workspace`, "POST");
               await refresh();
               setProject(String(created.id));
+              setFile("");
+              setContent("");
+              setImagePreview("");
+              setDirty(false);
               await listFiles(workspace.path);
             }
           })}
