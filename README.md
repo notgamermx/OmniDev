@@ -33,6 +33,8 @@ Conversation history and model controls share one workspace.
 ## Core features
 
 - **Your models:** configured providers appear in Chat; manage encrypted keys and optional fallback routing in Models & keys.
+- **OmniMode:** send one task to up to five saved specialist agents concurrently, then send their independent outputs to a separately configured reviewer for cross-checking and synthesis. The reviewer reports model-level review only; it does not claim to run tests or inspect external sources.
+- **Project workspaces:** opening a project initializes a dedicated folder under the configured workspace root. Files supports nested folders, text editing, binary imports up to 10 MB, image previews and downloads.
 - **Development tools:** project files, editor, bounded Docker terminal, and agent tools controlled by the engine.
 - **Activity:** persisted state changes, tool calls, results, verification progress, conservative token-budget reservations, cancellation, and pause after the current operation.
 - **Continuity:** conversations, project memory and preferences stored locally in SQLite.
