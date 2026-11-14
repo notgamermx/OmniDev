@@ -53,8 +53,6 @@ def files(path: str = "."):
                 "isDirectory": item.is_dir(),
                 "isImage": item.is_file() and item.suffix.lower() in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"},
                 "size": item.stat().st_size if item.is_file() else None,
-                "isImage": item.is_file() and item.suffix.lower() in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"},
-                "size": item.stat().st_size if item.is_file() else None,
             }
         )
     return {"path": path, "items": items}
