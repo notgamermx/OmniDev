@@ -759,3 +759,6 @@ button.omnimode-run:disabled { opacity: .45; cursor: not-allowed; }
 .workspace-file-row > .row { min-width: 0; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .workspace-file-download { width: 30px; height: 30px; padding: 0; color: var(--muted); background: transparent; border: 0; font-size: 13px; }
 .workspace-file-download:hover { color: var(--text); background: var(--soft); }
+
+.omnimode-agent-actions { display: flex; align-items: center; gap: 8px; }
+.omnimode-agent-actions button { padding: 5px 8px; font-size: 10px; }
