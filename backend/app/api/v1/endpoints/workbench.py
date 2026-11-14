@@ -1,6 +1,9 @@
 """Shared project tools and persistent conversations for desktop, web and CLI."""
 
+import base64
+import binascii
 import json
+import mimetypes
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -50,6 +53,8 @@ def files(path: str = "."):
                 "isDirectory": item.is_dir(),
                 "isImage": item.is_file() and item.suffix.lower() in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"},
                 "size": item.stat().st_size if item.is_file() else None,
+                "isImage": item.is_file() and item.suffix.lower() in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"},
+                "size": item.stat().st_size if item.is_file() else None,
             }
         )
     return {"path": path, "items": items}
@@ -94,7 +99,14 @@ def import_file(body: FileImport):
     if destination.exists() and destination.is_dir():
         raise HTTPException(status_code=409, detail="The destination is a directory.")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_bytes(payload)
+    if body.overwrite:
+        destination.write_bytes(payload)
+    else:
+        try:
+            with destination.open("xb") as imported:
+                imported.write(payload)
+        except FileExistsError as exc:
+            raise HTTPException(status_code=409, detail="A file with that name already exists.") from exc
     return {
         "path": destination.relative_to(settings.PROJECT_ROOT.resolve()).as_posix(),
         "bytes": len(payload),
