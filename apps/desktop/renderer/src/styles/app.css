@@ -732,7 +732,9 @@ button.omnimode-run:disabled { opacity: .45; cursor: not-allowed; }
   color: var(--text);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font: 11px/1.65 inherit;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.65;
 }
 .omnimode-review-card { border-color: var(--accent); }
 .omnimode-status {
