@@ -564,9 +564,10 @@ export default function App() {
                       name: f.get("name"),
                       provider: f.get("provider"),
                       model: f.get("model"),
+                      description: f.get("description") || null,
                       tool_names: f.getAll("tools"),
-                      system_prompt:
-                        "Plan the task, use tools to implement it, run tests and fix failures before COMPLETE. Use THOUGHT, ACTION: tool_name {JSON}, COMPLETE: summary.",
+                      max_steps: Number(f.get("max_steps") || 25),
+                      system_prompt: f.get("system_prompt") || "Plan the task, use tools to implement it, run tests and fix failures before COMPLETE. Use THOUGHT, ACTION: tool_name {JSON}, COMPLETE: summary.",
                     });
                     await refresh();
                   });
