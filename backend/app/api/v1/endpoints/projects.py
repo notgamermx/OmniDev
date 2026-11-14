@@ -1,5 +1,10 @@
 """Project and workspace API endpoints."""
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException, Path as PathParam, Body
+
+from app.core.config import settings
+from app.core.security import resolve_within_root
 from typing import Optional
 
 from app.services.project_service import ProjectService
@@ -98,3 +103,19 @@ async def delete_project(
     if not success:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
     return {"deleted": True, "project_id": project_id}
+
+
+@router.post("/{project_id}/workspace", response_model=dict, summary="Open or initialize a project's workspace")
+async def open_project_workspace(project_id: int = PathParam(..., ge=1)):
+    """Create the project-scoped directory and return its root-relative path."""
+    project = await get_project_service().get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+    try:
+        root = settings.PROJECT_ROOT.expanduser().resolve()
+        root.mkdir(parents=True, exist_ok=True)
+        workspace = resolve_within_root(root, str(project_id))
+        workspace.mkdir(parents=True, exist_ok=True)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Could not initialize this project's workspace.") from exc
+    return {"project_id": project_id, "name": project.name, "path": workspace.relative_to(root).as_posix()}
