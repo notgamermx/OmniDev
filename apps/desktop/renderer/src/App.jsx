@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { request, streamChat, connection, normalizeEngineUrl } from "./services/api";
 import Connectors from "./Connectors";
 import Models from "./Models";
+import OmniMode from "./OmniMode";
 import ModelPicker from "./ModelPicker";
 import logo from "./assets/logo.svg";
 import ResponseContent from "./ResponseContent";
@@ -11,6 +12,7 @@ import Personalization, { loadAppearance } from "./Personalization";
 const iconPaths = {
   Chat: "M4 4h16v12H9l-5 4z", Tasks: "m5 6 2 2 4-4M13 6h7M5 13h15M5 19h15",
   Agents: "M8 4h8v5H8zM4 15h5v5H4zM15 15h5v5h-5zM12 9v3M6 15v-3h12v3",
+  OmniMode: "M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8m7.2 7.2 2.8 2.8m0-12.8-2.8 2.8m-7.2 7.2-2.8 2.8M9 9h6v6H9z",
   Files: "M3 6h7l2 3h9v12H3z", Terminal: "m5 6 5 6-5 6M13 18h6",
   Memory: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5", Models: "M12 3 3 8l9 5 9-5zM3 12l9 5 9-5M3 16l9 5 9-5",
   Connectors: "m8 3 4 4-5 5-4-4zM17 12l4 4-5 5-4-4zM9 15l6-6", Connection: "M4 8a12 12 0 0 1 16 0M7 12a7 7 0 0 1 10 0M10 16a3 3 0 0 1 4 0M12 20h.01",
@@ -34,7 +36,7 @@ export default function App() {
   const [appearance, setAppearance] = useState(loadAppearance);
   const [threadSearch, setThreadSearch] = useState("");
   const [showThreads, setShowThreads] = useState(false);
-  const [attachment, setAttachment] = useState(null);
+  const [attachment, setAttachment] = useState(null);\n  const [imagePreview, setImagePreview] = useState("");
   useEffect(() => {
     localStorage.setItem("omnidev-appearance", JSON.stringify(appearance));
     const element = document.documentElement;
@@ -215,6 +217,52 @@ export default function App() {
     setContent(f.content);
     setDirty(false);
   }
+  async function activateProject(value) {
+    await act(async () => {
+      if (!value) {
+        setProject("");
+        await listFiles(".");
+        return;
+      }
+      const workspace = await request(`/projects/${value}/workspace`, "POST");
+      setProject(String(value));
+      await listFiles(workspace.path);
+    });
+  }
+  async function importFiles(event) {
+    const selectedFiles = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!selectedFiles.length) return;
+    await act(async () => {
+      for (const selectedFile of selectedFiles) {
+        if (selectedFile.size <= 0 || selectedFile.size > 10000000) {
+          throw new Error(`Choose a non-empty file under 10 MB: ${selectedFile.name}`);
+        }
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => reject(new Error(`Could not read ${selectedFile.name}`));
+          reader.readAsDataURL(selectedFile);
+        });
+        const relativePath = directory === "." ? selectedFile.name : `${directory}/${selectedFile.name}`;
+        await request("/files/import", "POST", {
+          path: relativePath,
+          content_base64: dataUrl.slice(dataUrl.indexOf(",") + 1),
+          overwrite: false,
+        });
+      }
+      await listFiles(directory);
+    });
+  }
+  async function openImage(path) {
+    if (dirty && !(await ask("Discard unsaved edits?", null))) return;
+    const data = await request("/file/base64?path=" + encodeURIComponent(path));
+    setFile(path);
+    setContent("");
+    setImagePreview(`data:${data.media_type};base64,${data.content_base64}`);
+    setDirty(false);
+  }
+
   async function makeTask(e) {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
@@ -329,7 +377,7 @@ export default function App() {
           <select
             aria-label="Project"
             value={project}
-            onChange={(e) => setProject(e.target.value)}
+            onChange={(e) => activateProject(e.target.value)}
           >
             <option value="">All projects</option>
             {projects.map((p) => (
@@ -494,7 +542,7 @@ export default function App() {
               </div>
             </div>
           )}
-          {view === "Agents" && (
+          {view === "OmniMode" && (\n            <OmniMode agents={agents} providers={providers} act={act} busy={busy} onSetup={() => setView("Models")} />\n          )}\n          {view === "Agents" && (
             <>
               <h2>Create an agent</h2>
               <form
@@ -686,7 +734,7 @@ export default function App() {
                     value={directory}
                     onChange={(e) => setDirectory(e.target.value)}
                   />
-                  {button("Open", () => listFiles(directory))}
+                  {button("Open", () => listFiles(directory))}\n                  <label className="import-button">\n                    Import files\n                    <input type="file" multiple onChange={importFiles} aria-label="Import files into workspace" />\n                  </label>
                   {button("Up", () =>
                     listFiles(
                       directory.includes("/")
@@ -709,7 +757,7 @@ export default function App() {
                     key={f.path}
                     onClick={() =>
                       act(() =>
-                        f.isDirectory ? listFiles(f.path) : openFile(f.path),
+                        f.isDirectory ? listFiles(f.path) : f.isImage ? openImage(f.path) : openFile(f.path),
                       )
                     }
                   >
