@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { request, streamChat, connection, normalizeEngineUrl } from "./services/api";
 import Connectors from "./Connectors";
 import Models from "./Models";
+import OmniMode from "./OmniMode";
 import ModelPicker from "./ModelPicker";
 import logo from "./assets/logo.svg";
 import ResponseContent from "./ResponseContent";
@@ -11,6 +12,7 @@ import Personalization, { loadAppearance } from "./Personalization";
 const iconPaths = {
   Chat: "M4 4h16v12H9l-5 4z", Tasks: "m5 6 2 2 4-4M13 6h7M5 13h15M5 19h15",
   Agents: "M8 4h8v5H8zM4 15h5v5H4zM15 15h5v5h-5zM12 9v3M6 15v-3h12v3",
+  OmniMode: "M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8m7.2 7.2 2.8 2.8m0-12.8-2.8 2.8m-7.2 7.2-2.8 2.8M9 9h6v6H9z",
   Files: "M3 6h7l2 3h9v12H3z", Terminal: "m5 6 5 6-5 6M13 18h6",
   Memory: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5", Models: "M12 3 3 8l9 5 9-5zM3 12l9 5 9-5M3 16l9 5 9-5",
   Connectors: "m8 3 4 4-5 5-4-4zM17 12l4 4-5 5-4-4zM9 15l6-6", Connection: "M4 8a12 12 0 0 1 16 0M7 12a7 7 0 0 1 10 0M10 16a3 3 0 0 1 4 0M12 20h.01",
@@ -21,6 +23,7 @@ const label = (view) => ({ Chat: "Chat", Tasks: "Activity", Models: "Models & ke
 const views = [
   "Chat",
   "Agents",
+  "OmniMode",
   "Tasks",
   "Files",
   "Terminal",
@@ -35,6 +38,7 @@ export default function App() {
   const [threadSearch, setThreadSearch] = useState("");
   const [showThreads, setShowThreads] = useState(false);
   const [attachment, setAttachment] = useState(null);
+  const [imagePreview, setImagePreview] = useState("");
   useEffect(() => {
     localStorage.setItem("omnidev-appearance", JSON.stringify(appearance));
     const element = document.documentElement;
@@ -213,8 +217,80 @@ export default function App() {
     const f = await request("/file?path=" + encodeURIComponent(path));
     setFile(path);
     setContent(f.content);
+    setImagePreview("");
     setDirty(false);
   }
+  async function activateProject(value) {
+    if (dirty && !(await ask("Discard unsaved edits before switching projects?", null))) return;
+    await act(async () => {
+      if (!value) {
+        setProject("");
+        setFile("");
+        setContent("");
+        setImagePreview("");
+        setDirty(false);
+        await listFiles(".");
+        return;
+      }
+      const workspace = await request(`/projects/${value}/workspace`, "POST");
+      setProject(String(value));
+      setFile("");
+      setContent("");
+      setImagePreview("");
+      setDirty(false);
+      await listFiles(workspace.path);
+    });
+  }
+  async function importFiles(event) {
+    const selectedFiles = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!selectedFiles.length) return;
+    await act(async () => {
+      for (const selectedFile of selectedFiles) {
+        if (selectedFile.size <= 0 || selectedFile.size > 10000000) {
+          throw new Error(`Choose a non-empty file under 10 MB: ${selectedFile.name}`);
+        }
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => reject(new Error(`Could not read ${selectedFile.name}`));
+          reader.readAsDataURL(selectedFile);
+        });
+        const relativePath = directory === "." ? selectedFile.name : `${directory}/${selectedFile.name}`;
+        await request("/files/import", "POST", {
+          path: relativePath,
+          content_base64: dataUrl.slice(dataUrl.indexOf(",") + 1),
+          overwrite: false,
+        });
+      }
+      await listFiles(directory);
+    });
+  }
+  async function openImage(path) {
+    if (dirty && !(await ask("Discard unsaved edits?", null))) return;
+    const data = await request("/file/base64?path=" + encodeURIComponent(path));
+    setFile(path);
+    setContent("");
+    setImagePreview(`data:${data.media_type};base64,${data.content_base64}`);
+    setDirty(false);
+  }
+
+  async function downloadWorkspaceFile(path) {
+    const asset = await request("/file/base64?path=" + encodeURIComponent(path));
+    const binary = atob(asset.content_base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    const blob = new Blob([bytes], { type: asset.media_type || "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = path.split("/").pop() || "workspace-file";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async function makeTask(e) {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
@@ -329,7 +405,7 @@ export default function App() {
           <select
             aria-label="Project"
             value={project}
-            onChange={(e) => setProject(e.target.value)}
+            onChange={(e) => activateProject(e.target.value)}
           >
             <option value="">All projects</option>
             {projects.map((p) => (
@@ -339,10 +415,18 @@ export default function App() {
             ))}
           </select>
           {button("New project", async () => {
+            if (dirty && !(await ask("Discard unsaved edits before creating a project?", null))) return;
             const name = await ask("Project name");
             if (name) {
-              await request("/projects/", "POST", { name });
+              const created = await request("/projects/", "POST", { name });
+              const workspace = await request(`/projects/${created.id}/workspace`, "POST");
               await refresh();
+              setProject(String(created.id));
+              setFile("");
+              setContent("");
+              setImagePreview("");
+              setDirty(false);
+              await listFiles(workspace.path);
             }
           })}
           {button("Refresh", refresh)}
@@ -494,6 +578,9 @@ export default function App() {
               </div>
             </div>
           )}
+          {view === "OmniMode" && (
+            <OmniMode agents={agents} providers={providers} act={act} busy={busy} onSetup={() => setView("Models")} />
+          )}
           {view === "Agents" && (
             <>
               <h2>Create an agent</h2>
@@ -507,9 +594,10 @@ export default function App() {
                       name: f.get("name"),
                       provider: f.get("provider"),
                       model: f.get("model"),
+                      description: f.get("description") || null,
                       tool_names: f.getAll("tools"),
-                      system_prompt:
-                        "Plan the task, use tools to implement it, run tests and fix failures before COMPLETE. Use THOUGHT, ACTION: tool_name {JSON}, COMPLETE: summary.",
+                      max_steps: Number(f.get("max_steps") || 25),
+                      system_prompt: f.get("system_prompt") || "Plan the task, use tools to implement it, run tests and fix failures before COMPLETE. Use THOUGHT, ACTION: tool_name {JSON}, COMPLETE: summary.",
                     });
                     await refresh();
                   });
@@ -517,7 +605,19 @@ export default function App() {
               >
                 <label>
                   Name
-                  <input name="name" required />
+                  <input name="name" placeholder="e.g. Code reviewer" required />
+                </label>
+                <label>
+                  Role / focus
+                  <input name="description" placeholder="e.g. Find bugs, security issues and missing tests" />
+                </label>
+                <label>
+                  Agent instructions
+                  <textarea name="system_prompt" rows={4} placeholder="Describe how this agent should approach its work. Leave blank for the standard development-agent instructions." />
+                </label>
+                <label>
+                  Maximum execution steps
+                  <input name="max_steps" type="number" min="1" max="200" defaultValue="25" />
                 </label>
                 <ModelPicker
                   onSetup={() => setView("Models")}
@@ -562,13 +662,10 @@ export default function App() {
                 {agents.map((a) => (
                   <article key={a.id}>
                     <h3>{a.name}</h3>
-                    <p>
-                      {a.provider} / {a.model}
-                    </p>
-                    <p>
-                      {a.tool_count} tools ·{" "}
-                      {a.enabled ? "Enabled" : "Disabled"}
-                    </p>
+                    <p>{a.description || "General-purpose development agent"}</p>
+                    <p>{a.provider} / {a.model} · {a.max_steps} max steps</p>
+                    <p>{a.tool_count} tools · {a.enabled ? "Enabled" : "Disabled"} · {(a.tool_names || []).join(", ")}</p>
+                    {button(a.enabled ? "Disable" : "Enable", async () => { await request(`/agents/${a.id}`, "PUT", { enabled: !a.enabled }); await refresh(); })}
                     {button("Delete", async () => {
                       if (await ask("Delete agent and its tasks?", null)) {
                         await request(`/agents/${a.id}`, "DELETE");
@@ -687,6 +784,10 @@ export default function App() {
                     onChange={(e) => setDirectory(e.target.value)}
                   />
                   {button("Open", () => listFiles(directory))}
+                  <label className="import-button">
+                    Import files
+                    <input type="file" multiple onChange={importFiles} aria-label="Import files into workspace" />
+                  </label>
                   {button("Up", () =>
                     listFiles(
                       directory.includes("/")
@@ -695,26 +796,37 @@ export default function App() {
                     ),
                   )}
                   {button("New file", async () => {
-                    const path = await ask("Path relative to project root");
-                    if (path) {
+                    const name = await ask("File name inside the current folder");
+                    if (name) {
+                      const path = directory === "." ? name : `${directory}/${name}`;
                       await request("/file", "PUT", { path, content: "" });
                       await listFiles(directory);
                       await openFile(path);
                     }
                   })}
+                  {button("New folder", async () => {
+                    const name = await ask("Folder name inside the current folder");
+                    if (name) {
+                      const path = directory === "." ? name : `${directory}/${name}`;
+                      await request("/directories", "POST", { path });
+                      await listFiles(directory);
+                    }
+                  })}
                 </div>
                 {files.map((f) => (
-                  <button
-                    className="row"
-                    key={f.path}
-                    onClick={() =>
-                      act(() =>
-                        f.isDirectory ? listFiles(f.path) : openFile(f.path),
-                      )
-                    }
-                  >
-                    {f.isDirectory ? "▸" : "·"} {f.name}
-                  </button>
+                  <div className="workspace-file-row" key={f.path}>
+                    <button
+                      className="row"
+                      onClick={() =>
+                        act(() =>
+                          f.isDirectory ? listFiles(f.path) : f.isImage ? openImage(f.path) : openFile(f.path),
+                        )
+                      }
+                    >
+                      {f.isDirectory ? "▸" : f.isImage ? "▧" : "·"} {f.name}
+                    </button>
+                    {!f.isDirectory && <button className="workspace-file-download" type="button" title={`Download ${f.name}`} aria-label={`Download ${f.name}`} onClick={() => act(() => downloadWorkspaceFile(f.path))}>↓</button>}
+                  </div>
                 ))}
               </div>
               <div className="editor">
@@ -723,14 +835,15 @@ export default function App() {
                     {file || "Select a file"}
                     {dirty ? " •" : ""}
                   </strong>
-                  <button type="button" disabled={!file || busy} onClick={() => act(() => downloadText(file, content))}>↓ Download file</button>
-                  {button("Save", async () => {
-                    if (!file) return;
+                  <button type="button" disabled={!file || busy} onClick={() => act(() => downloadWorkspaceFile(file))}>↓ Download file</button>
+                  <button type="button" disabled={!file || busy || Boolean(imagePreview)} onClick={() => act(async () => {
                     await request("/file", "PUT", { path: file, content });
                     setDirty(false);
-                  })}
+                  })}>Save</button>
                 </div>
-                <textarea
+                {imagePreview ? (
+                  <div className="image-preview"><img src={imagePreview} alt={`Preview of ${file}`} /><p>{file}</p></div>
+                ) : <textarea
                   aria-label="Code editor"
                   disabled={!file}
                   value={content}
@@ -739,7 +852,7 @@ export default function App() {
                     setContent(e.target.value);
                     setDirty(true);
                   }}
-                />
+                />}
               </div>
             </div>
           )}

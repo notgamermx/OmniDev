@@ -1,6 +1,9 @@
 """Shared project tools and persistent conversations for desktop, web and CLI."""
 
+import base64
+import binascii
 import json
+import mimetypes
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -48,6 +51,8 @@ def files(path: str = "."):
                 "name": item.name,
                 "path": item.relative_to(settings.PROJECT_ROOT.resolve()).as_posix(),
                 "isDirectory": item.is_dir(),
+                "isImage": item.is_file() and item.suffix.lower() in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"},
+                "size": item.stat().st_size if item.is_file() else None,
             }
         )
     return {"path": path, "items": items}
@@ -69,6 +74,58 @@ def read_file(path: str):
 class FileWrite(BaseModel):
     path: str = Field(min_length=1)
     content: str = Field(max_length=2_000_000)
+
+
+class FileImport(BaseModel):
+    path: str = Field(min_length=1, max_length=2000)
+    content_base64: str = Field(min_length=1, max_length=14_000_000)
+    overwrite: bool = False
+
+
+@router.post("/files/import")
+def import_file(body: FileImport):
+    """Import a binary or text file into the current workspace without silent overwrite."""
+    try:
+        payload = base64.b64decode(body.content_base64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="The uploaded file is not valid base64 data.") from exc
+    if not payload or len(payload) > 10_000_000:
+        raise HTTPException(status_code=413, detail="Choose a non-empty file no larger than 10 MB.")
+    destination = project_path(body.path)
+    if destination.exists() and not body.overwrite:
+        raise HTTPException(status_code=409, detail="A file with that name already exists. Rename it or confirm overwrite.")
+    if destination.exists() and destination.is_dir():
+        raise HTTPException(status_code=409, detail="The destination is a directory.")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if body.overwrite:
+        destination.write_bytes(payload)
+    else:
+        try:
+            with destination.open("xb") as imported:
+                imported.write(payload)
+        except FileExistsError as exc:
+            raise HTTPException(status_code=409, detail="A file with that name already exists.") from exc
+    return {
+        "path": destination.relative_to(settings.PROJECT_ROOT.resolve()).as_posix(),
+        "bytes": len(payload),
+        "media_type": mimetypes.guess_type(destination.name)[0] or "application/octet-stream",
+        "imported": True,
+    }
+
+
+@router.get("/file/base64")
+def read_file_base64(path: str):
+    """Read a bounded workspace asset for authenticated image preview."""
+    file = project_path(path)
+    if not file.is_file():
+        raise HTTPException(404, "File not found")
+    if file.stat().st_size > 10_000_000:
+        raise HTTPException(413, "File is larger than 10 MB")
+    return {
+        "path": path,
+        "content_base64": base64.b64encode(file.read_bytes()).decode("ascii"),
+        "media_type": mimetypes.guess_type(file.name)[0] or "application/octet-stream",
+    }
 
 
 @router.put("/file")

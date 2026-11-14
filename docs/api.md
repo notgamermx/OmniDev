@@ -16,7 +16,9 @@ Run `omnidev serve` and open `/docs` for request/response schemas. API paths sta
 | `/agents/` | Agent definitions and assigned tools |
 | `/tasks/` | Tasks, synchronous execution, background run, streaming, cancellation and steps |
 | `/sessions` | Persisted conversations shared by clients |
+| `/omnimode/run` | Parallel specialist completions followed by an independent reviewer and synthesis |
 | `/files`, `/file` | Scoped directory listing and UTF-8 reads/writes |
+| `/files/import`, `/file/base64` | Bounded binary imports and authenticated asset previews/downloads |
 | `/terminal` | Permissioned bounded command execution |
 | `/memory` | Session/project memory, preferences, recall and understanding |
 | `/workspace`, `/dashboard` | Workspace capabilities and status |

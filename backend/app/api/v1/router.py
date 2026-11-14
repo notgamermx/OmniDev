@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import health, system, projects, workspaces, chat, agents, tasks, memory, dashboard
+from app.api.v1.endpoints import health, system, projects, workspaces, chat, agents, tasks, memory, dashboard, omnimode
 
 api_router = APIRouter()
 api_router.include_router(
@@ -56,3 +56,5 @@ api_router.include_router(connectors.router, tags=["Connectors"])
 
 from app.api.v1.endpoints import models
 api_router.include_router(models.router, tags=["Models"])
+
+api_router.include_router(omnimode.router, prefix="/omnimode", tags=["OmniMode"])
