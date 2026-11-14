@@ -5,7 +5,7 @@ import { request } from "./services/api";
 export default function OmniMode({ agents, providers, act, busy, onSetup }) {
   const [prompt, setPrompt] = useState("");
   const [selected, setSelected] = useState([]);
-  const [reviewerProvider, setReviewerProvider] = useState("");
+  const [reviewerProvider, setReviewerProvider] = useState("nvidia_nim");
   const [reviewerModel, setReviewerModel] = useState("");
   const [result, setResult] = useState(null);
 
@@ -44,6 +44,7 @@ export default function OmniMode({ agents, providers, act, busy, onSetup }) {
   }
 
   const enabledAgents = agents.filter((agent) => agent.enabled);
+  const reviewerProviders = providers.filter((provider) => provider.name !== "builtin");
   const review = result?.review;
   const totalTokens = [...(result?.specialists || []), ...(review ? [review] : [])]
     .reduce((sum, item) => sum + (item.usage?.total_tokens || 0), 0);
@@ -70,9 +71,13 @@ export default function OmniMode({ agents, providers, act, busy, onSetup }) {
       <section className="omnimode-panel">
         <div className="omnimode-panel-heading">
           <div><h3>2. Choose specialist agents</h3><p>Each selected agent uses its saved provider, model, focus, and instructions.</p></div>
-          <span className="omnimode-count">{enabledAgents.length} available</span>
+          <div className="omnimode-agent-actions">
+            <span className="omnimode-count">{enabledAgents.length} available</span>
+            {!!enabledAgents.length && <button type="button" disabled={busy} onClick={() => setSelected(selected.length === Math.min(5, enabledAgents.length) ? [] : enabledAgents.slice(0, 5).map((agent) => agent.id))}>{selected.length === Math.min(5, enabledAgents.length) ? "Clear selection" : "Select all (max 5)"}</button>}
+          </div>
         </div>
         {!enabledAgents.length && <p className="empty">Create and enable agents in the Agents page first.</p>}
+        {enabledAgents.length > 5 && <p className="muted omnimode-note">There are more than five enabled agents. Select the five specialists for this run.</p>}
         <div className="omnimode-agent-grid">
           {enabledAgents.map((agent) => (
             <label className={"omnimode-agent" + (selected.includes(agent.id) ? " selected" : "")} key={agent.id}>
@@ -92,7 +97,7 @@ export default function OmniMode({ agents, providers, act, busy, onSetup }) {
         <div className="omnimode-panel-heading">
           <div><h3>3. Independent reviewer</h3><p>Choose your strongest configured model. For example, use NVIDIA NIM with Nemotron 3 Ultra 550B when your account has access to it.</p></div>
         </div>
-        <ModelPicker providers={providers} provider={reviewerProvider} model={reviewerModel} onProvider={(value) => { setReviewerProvider(value); setReviewerModel(value === "builtin" ? "auto" : ""); }} onModel={setReviewerModel} onSetup={onSetup} busy={busy} />
+        <ModelPicker providers={reviewerProviders} provider={reviewerProvider} model={reviewerModel} onProvider={(value) => { setReviewerProvider(value); setReviewerModel(value === "builtin" ? "auto" : ""); }} onModel={setReviewerModel} onSetup={onSetup} busy={busy} />
         <p className="muted omnimode-note">The reviewer compares model outputs and flags reasoning gaps. This review is not a substitute for actually running tests, checking external sources, or inspecting project files.</p>
       </section>
 
