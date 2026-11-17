@@ -51,6 +51,10 @@ PROVIDER_BY_ID = {provider.id: provider for provider in PROVIDERS}
 class ProviderError(Exception):
     """Sanitized provider error suitable for mapping to an API response."""
 
+    def __init__(self, message: str, *, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+
 
 class ProviderRateLimitError(ProviderError):
     pass
@@ -193,9 +197,9 @@ class OpenAICompatibleProvider:
             if self._adapt_rejected_options(response, payload):
                 continue
             if response.status_code == 429:
-                raise ProviderRateLimitError(self._error_message(response))
+                raise ProviderRateLimitError(self._error_message(response), status_code=response.status_code)
             if response.is_error:
-                raise ProviderError(self._error_message(response))
+                raise ProviderError(self._error_message(response), status_code=response.status_code)
             return response
         raise ProviderError("Provider request failed")
 
