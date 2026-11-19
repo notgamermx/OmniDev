@@ -8,6 +8,7 @@ import re
 import time
 from pathlib import Path
 from app.services.verification_guard import snapshot, unchanged
+from app.services.workspace_history import create_snapshot
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -87,6 +88,7 @@ class ExecutionContext:
     step_count: int = 0
     context_manager: ContextManager = field(default_factory=ContextManager)
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
+    model_usage: list[dict[str, Any]] = field(default_factory=list)
 
 
 class AgentEngine:
@@ -240,6 +242,16 @@ class AgentEngine:
             agent_model=agent, task_model=task, project_root=project_root
         )
 
+        try:
+            before_snapshot = create_snapshot(project_root, f"Before task #{task.id}: {task.title}")
+            context.task_model.task_config = {
+                **(context.task_model.task_config or {}),
+                "workspace_snapshot_id": before_snapshot["id"],
+                "workspace_root": str(Path(project_root).resolve()),
+            }
+            await self._persist_task(context, task_config=context.task_model.task_config)
+        except (OSError, ValueError) as exc:
+            logger.warning("Could not create task workspace snapshot: %s", exc)
         context.verification_inputs = snapshot(project_root)
         context.context_manager.set_task_context(
             task_id=str(task.id),
@@ -588,12 +600,39 @@ class AgentEngine:
                     raise RuntimeError("Task token budget exceeded")
                 context.token_spent += charge
                 await self._persist_task(context, task_config={**(context.task_model.task_config or {}), "token_spent": context.token_spent})
+                call_started = time.perf_counter()
                 response = await provider.chat_completion(
                     model=candidate["model"],
                     messages=prompt,
                     temperature=context.agent_model.temperature or 0.0,
                     max_tokens=2000,
                 )
+                latency_ms = round((time.perf_counter() - call_started) * 1000, 2)
+                usage = response.get("usage") or {}
+                prompt_tokens = usage.get("prompt_tokens")
+                completion_tokens = usage.get("completion_tokens")
+                usage_record = {
+                    "provider": candidate["provider"],
+                    "model": response.get("model") or candidate["model"],
+                    "latency_ms": latency_ms,
+                    "input_tokens": int(prompt_tokens) if prompt_tokens is not None else None,
+                    "output_tokens": int(completion_tokens) if completion_tokens is not None else None,
+                    "total_tokens": int(usage.get("total_tokens")) if usage.get("total_tokens") is not None else None,
+                    "estimated_cost_usd": None,
+                }
+                context.model_usage.append(usage_record)
+                task_config = {
+                    **(context.task_model.task_config or {}),
+                    "model_usage": list(context.model_usage),
+                    "model_usage_totals": {
+                        "calls": len(context.model_usage),
+                        "input_tokens": sum(x["input_tokens"] or 0 for x in context.model_usage),
+                        "output_tokens": sum(x["output_tokens"] or 0 for x in context.model_usage),
+                        "latency_ms": round(sum(x["latency_ms"] for x in context.model_usage), 2),
+                        "estimated_cost_usd": None,
+                    },
+                }
+                await self._persist_task(context, task_config=task_config)
                 content = (
                     response.get("choices", [{}])[0]
                     .get("message", {})

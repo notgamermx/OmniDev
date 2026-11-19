@@ -353,3 +353,42 @@ async def pause_task(task_id: int, paused: bool = Body(True, embed=True)):
     if not get_task_service()._with_db(transition):
         raise HTTPException(409, f"Task must be {before} to {target}")
     return {"task_id": task_id, "status": target}
+
+
+
+@router.get("/{task_id}/diff", summary="Review workspace changes made during a task")
+async def get_task_diff(task_id: int = Path(..., description="Task ID")):
+    service = get_task_service()
+    task = await service.get_task(task_id)
+    if not task:
+        raise HTTPException(404, "Task not found")
+    metadata = task.task_config or {}
+    snapshot_id = metadata.get("workspace_snapshot_id")
+    root = metadata.get("workspace_root")
+    if not snapshot_id or not root:
+        raise HTTPException(404, "No workspace snapshot is available for this task")
+    from app.services.workspace_history import compare_snapshot
+    try:
+        return compare_snapshot(root, snapshot_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/{task_id}/usage", summary="Get per-task model usage and latency")
+async def get_task_usage(task_id: int = Path(..., description="Task ID")):
+    service = get_task_service()
+    task = await service.get_task(task_id)
+    if not task:
+        raise HTTPException(404, "Task not found")
+    metadata = task.task_config or {}
+    return {
+        "task_id": task_id,
+        "calls": metadata.get("model_usage", []),
+        "totals": metadata.get("model_usage_totals", {
+            "calls": 0, "input_tokens": 0, "output_tokens": 0,
+            "latency_ms": 0, "estimated_cost_usd": None,
+        }),
+        "cost_note": "Cost is null when provider pricing is not configured; unknown costs are never guessed.",
+    }

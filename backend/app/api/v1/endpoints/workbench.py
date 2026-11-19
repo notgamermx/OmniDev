@@ -252,3 +252,74 @@ async def set_execution_permission(value: ExecutionPermission):
     # Defaults remain disabled. This explicit switch lasts until engine restart.
     settings.TERMINAL_ENABLED = value.enabled
     return {"terminal_enabled": settings.TERMINAL_ENABLED}
+
+
+class SnapshotCreate(BaseModel):
+    name: str = Field(default="Workspace snapshot", min_length=1, max_length=200)
+
+
+class SnapshotRestore(BaseModel):
+    confirm: bool = False
+
+
+class SnapshotFileRestore(BaseModel):
+    path: str = Field(min_length=1, max_length=2000)
+    confirm: bool = False
+
+
+@router.get("/workspace/snapshots")
+def list_workspace_snapshots():
+    root = settings.PROJECT_ROOT.resolve()
+    directory = root / ".omnidev" / "history" / "snapshots"
+    if not directory.is_dir():
+        return {"snapshots": []}
+    snapshots = []
+    for source in sorted(directory.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True):
+        try:
+            record = json.loads(source.read_text(encoding="utf-8"))
+            snapshots.append({key: record[key] for key in ("id", "name", "created_at", "file_count", "bytes")})
+        except (OSError, ValueError, KeyError):
+            continue
+    return {"snapshots": snapshots}
+
+
+@router.post("/workspace/snapshots")
+def create_workspace_snapshot(body: SnapshotCreate):
+    try:
+        return create_snapshot(settings.PROJECT_ROOT, body.name)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/workspace/snapshots/{snapshot_id}")
+def preview_workspace_snapshot(snapshot_id: str):
+    try:
+        return compare_snapshot(settings.PROJECT_ROOT, snapshot_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/workspace/snapshots/{snapshot_id}/restore")
+def restore_workspace_snapshot(snapshot_id: str, body: SnapshotRestore):
+    if not body.confirm:
+        raise HTTPException(409, "Set confirm=true after reviewing the snapshot diff.")
+    try:
+        return restore_snapshot(settings.PROJECT_ROOT, snapshot_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/workspace/snapshots/{snapshot_id}/files/restore")
+def restore_workspace_snapshot_file(snapshot_id: str, body: SnapshotFileRestore):
+    if not body.confirm:
+        raise HTTPException(409, "Set confirm=true after reviewing the file diff.")
+    try:
+        return restore_snapshot_file(settings.PROJECT_ROOT, snapshot_id, body.path)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
