@@ -274,6 +274,7 @@ async def test_agent_provider_failover_closes_failed_provider(monkeypatch):
     context = SimpleNamespace(
         agent_model=SimpleNamespace(provider="ollama", model="primary", temperature=0),
         context_manager=SimpleNamespace(get_prompt=lambda: []),
+        model_usage=[],
     )
     context.token_spent = 0
     from unittest.mock import AsyncMock
