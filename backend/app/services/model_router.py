@@ -13,6 +13,42 @@ from app.services.llm_providers import (
 )
 
 _cooldowns: dict[tuple[str, str], float] = {}
+_model_status: dict[tuple[str, str], dict] = {}
+_UNAVAILABLE_HTTP_CODES = {401, 403, 404, 410, 422}
+
+
+def model_status(provider: str, model: str) -> dict:
+    """Return the runtime health state for a discovered model."""
+    key = (provider, model)
+    state = _model_status.get(key)
+    if state and state["retry_at"] <= time.monotonic():
+        _model_status.pop(key, None)
+        state = None
+    return state or {"status": "unknown", "reason": None, "retry_in": 0}
+
+
+def _record_failure(provider: str, model: str, error: ProviderError) -> None:
+    code = getattr(error, "status_code", None)
+    if code in _UNAVAILABLE_HTTP_CODES:
+        delay, status = 900, "unavailable"
+    elif isinstance(error, ProviderRateLimitError):
+        delay, status = 60, "rate_limited"
+    else:
+        delay, status = 20, "temporarily_unavailable"
+    now = time.monotonic()
+    _cooldowns[(provider, model)] = now + delay
+    _model_status[(provider, model)] = {
+        "status": status,
+        "reason": f"HTTP {code}" if code else str(error)[:180],
+        "retry_at": now + delay,
+    }
+
+
+def _record_success(provider: str, model: str) -> None:
+    _cooldowns.pop((provider, model), None)
+    _model_status[(provider, model)] = {
+        "status": "available", "reason": None, "retry_at": time.monotonic() + 300
+    }
 _NON_CHAT_MODEL_HINTS = (
     "embedding", "embed-", "rerank", "text-to-speech", "tts",
     "speech", "transcription", "whisper", "stable-diffusion",
@@ -144,10 +180,11 @@ class ModelPool:
                 data = await provider.chat_completion(model=route["model"], **kwargs)
                 if not isinstance(data, dict) or not isinstance(data.get("choices"), list) or not data["choices"]:
                     raise ProviderError("Provider returned an invalid completion")
+                _record_success(route["provider"], route["model"])
                 return {**data, "routed_provider": route["provider"]}
             except (ProviderError, ValueError, TypeError) as exc:
                 last = exc if isinstance(exc, ProviderError) else ProviderError("Provider returned an invalid response")
-                _cooldowns[(route["provider"], route["model"])] = time.monotonic() + (30 if isinstance(exc, ProviderRateLimitError) else 5)
+                _record_failure(route["provider"], route["model"], last)
             finally:
                 if provider:
                     await provider.close()
@@ -164,10 +201,11 @@ class ModelPool:
                     if not isinstance(chunk, dict) or "error" in chunk:
                         raise ProviderError("Provider returned an invalid stream event")
                     emitted = True
+                    _record_success(route["provider"], route["model"])
                     yield {**chunk, "routed_provider": route["provider"]}
                 return
             except ProviderError as exc:
-                _cooldowns[(route["provider"], route["model"])] = time.monotonic() + (30 if isinstance(exc, ProviderRateLimitError) else 5)
+                _record_failure(route["provider"], route["model"], exc)
                 if emitted:
                     raise
                 last = exc
